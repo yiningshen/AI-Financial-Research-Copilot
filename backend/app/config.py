@@ -57,6 +57,17 @@ class Settings(BaseSettings):
     def _split_origins(cls, value: str) -> list[str]:
         return [origin.strip() for origin in value.split(",") if origin.strip()]
 
+    @property
+    def sqlalchemy_database_url(self) -> str:
+        """`database_url` with the psycopg3 driver named explicitly.
+
+        SQLAlchemy resolves a bare `postgresql://` to psycopg2, which this project
+        doesn't install. Supabase hands out bare URLs, so rewrite rather than ask
+        everyone to remember the `+psycopg` suffix in their `.env`.
+        """
+        _, _, rest = self.database_url.partition("://")
+        return f"postgresql+psycopg://{rest}"
+
     @field_validator("database_url")
     @classmethod
     def _reject_transaction_pooler(cls, value: str) -> str:

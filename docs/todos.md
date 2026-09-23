@@ -25,7 +25,7 @@ Order follows [architecture.md](architecture.md#implementation-sequence): stand 
 
 ## 3. Database schema
 
-- [ ] `app/database/models.py` — SQLAlchemy models: `profiles`, `chat_threads`, `chat_messages`, `message_citations`, `source_documents`, `document_chunks`
+- [ ] `app/database/models/` — SQLAlchemy models, one per file: `users`, `chat_threads`, `chat_messages`, `message_citations`, `source_documents`, `document_chunks`
 - [ ] `uv run alembic init alembic`, point `env.py` at app metadata + direct (session) DB URL from settings
 - [ ] `uv run alembic revision --autogenerate -m "initial schema"`, review the generated file
 - [ ] Hand-add what autogenerate can't infer: `create extension if not exists vector`, `vector(1536)` column, generated `tsvector` column, HNSW index, GIN index, RLS policies

@@ -29,6 +29,11 @@ packages = ["app"]
 add-bounds = "exact"
 exclude-newer = "7 days"
 
+[tool.ruff.lint.isort]
+# The local `alembic/` migrations directory makes ruff read the installed
+# `alembic` package as first-party.
+known-third-party = ["alembic"]
+
 [tool.pytest.ini_options]
 markers = [
     "integration: needs live OpenAI / Supabase credentials; excluded from the fast suite",
