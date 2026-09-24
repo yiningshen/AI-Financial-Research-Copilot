@@ -14,13 +14,23 @@ if config.config_file_name is not None:
 target_metadata = Base.metadata
 
 
+# Lives in the migration rather than the models, because the models can't express a
+# foreign key into the Supabase-owned `auth` schema. Autogenerate sees it in the
+# database, doesn't find it in the metadata, and proposes dropping it every run.
+MIGRATION_OWNED_CONSTRAINTS = {"fk_users_auth_users"}
+
+
 def include_object(obj, name, type_, reflected, compare_to):
-    """Keep autogenerate off tables Supabase owns.
+    """Keep autogenerate off objects the app doesn't own.
 
     Without this, a diff against the live database proposes dropping everything in
     `auth`, `storage`, and friends.
     """
-    return not (type_ == "table" and obj.schema not in (None, "public"))
+    if type_ == "table" and obj.schema not in (None, "public"):
+        return False
+    return not (
+        type_ == "foreign_key_constraint" and name in MIGRATION_OWNED_CONSTRAINTS
+    )
 
 
 def run_migrations_offline() -> None:

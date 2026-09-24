@@ -30,7 +30,7 @@ class ChatMessage(Base):
     role: Mapped[str] = mapped_column(String(16), nullable=False)
     content: Mapped[str] = mapped_column(Text, nullable=False)
     # AI SDK message parts, kept verbatim so the UI can replay a turn exactly.
-    parts: Mapped[dict | None] = mapped_column(JSONB)
+    parts: Mapped[list[dict] | None] = mapped_column(JSONB)
     # Token counts and model name for the run that produced this message.
     usage: Mapped[dict | None] = mapped_column(JSONB)
     created_at: Mapped[datetime] = created_at_column()

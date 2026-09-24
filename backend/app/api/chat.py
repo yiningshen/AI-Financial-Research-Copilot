@@ -1,0 +1,138 @@
+"""Chat thread and streaming API routes."""
+
+from datetime import datetime
+from typing import Any
+from uuid import UUID
+
+import httpx
+from fastapi import APIRouter, HTTPException, status
+from fastapi.responses import StreamingResponse
+from postgrest import APIError
+from pydantic import BaseModel, Field, field_validator
+
+from app.chat.messages import ChatStreamRequest
+from app.chat.streaming import stream_stub_reply
+from app.database.chats import (
+    ChatRepositoryDependency,
+    ThreadForbiddenError,
+    ThreadNotFoundError,
+)
+
+router = APIRouter(prefix="/chat", tags=["chat"])
+
+
+class CreateThreadRequest(BaseModel):
+    title: str | None = Field(default=None, max_length=200)
+
+    @field_validator("title")
+    @classmethod
+    def normalize_title(cls, value: str | None) -> str | None:
+        if value is None:
+            return None
+        return value.strip() or None
+
+
+class ThreadResponse(BaseModel):
+    id: UUID
+    title: str | None
+    created_at: datetime
+    updated_at: datetime
+
+
+class CitationResponse(BaseModel):
+    id: UUID
+    document_id: UUID
+    chunk_id: UUID | None
+    position: int
+    quoted_text: str
+    page: int | None
+    section: str | None
+
+
+class MessageResponse(BaseModel):
+    id: UUID
+    thread_id: UUID
+    role: str
+    content: str
+    parts: Any = None
+    usage: Any = None
+    created_at: datetime
+    citations: list[CitationResponse] = Field(default_factory=list)
+
+
+def _thread_access_error(exc: Exception) -> HTTPException:
+    if isinstance(exc, ThreadForbiddenError):
+        return HTTPException(status_code=403, detail="Thread access denied")
+    return HTTPException(status_code=404, detail="Thread not found")
+
+
+def _upstream_error() -> HTTPException:
+    return HTTPException(status_code=502, detail="Chat storage is unavailable")
+
+
+@router.get("/threads", response_model=list[ThreadResponse])
+async def list_threads(
+    repository: ChatRepositoryDependency,
+) -> list[dict[str, Any]]:
+    try:
+        return await repository.list_threads()
+    except (APIError, httpx.HTTPError) as exc:
+        raise _upstream_error() from exc
+
+
+@router.post(
+    "/threads",
+    response_model=ThreadResponse,
+    status_code=status.HTTP_201_CREATED,
+)
+async def create_thread(
+    request: CreateThreadRequest,
+    repository: ChatRepositoryDependency,
+) -> dict[str, Any]:
+    try:
+        return await repository.create_thread(request.title)
+    except (APIError, httpx.HTTPError) as exc:
+        raise _upstream_error() from exc
+
+
+@router.get(
+    "/threads/{thread_id}/messages",
+    response_model=list[MessageResponse],
+)
+async def get_thread_messages(
+    thread_id: UUID,
+    repository: ChatRepositoryDependency,
+) -> list[dict[str, Any]]:
+    try:
+        return await repository.get_messages(thread_id)
+    except (ThreadForbiddenError, ThreadNotFoundError) as exc:
+        raise _thread_access_error(exc) from exc
+    except (APIError, httpx.HTTPError) as exc:
+        raise _upstream_error() from exc
+
+
+@router.post("/stream")
+async def stream_chat(
+    request: ChatStreamRequest,
+    repository: ChatRepositoryDependency,
+) -> StreamingResponse:
+    try:
+        await repository.require_thread(request.thread_id)
+    except (ThreadForbiddenError, ThreadNotFoundError) as exc:
+        raise _thread_access_error(exc) from exc
+    except (APIError, httpx.HTTPError) as exc:
+        raise _upstream_error() from exc
+
+    return StreamingResponse(
+        stream_stub_reply(
+            repository=repository,
+            thread_id=request.thread_id,
+            user_message=request.final_user_message,
+        ),
+        media_type="text/event-stream",
+        headers={
+            "Cache-Control": "no-cache",
+            "X-Accel-Buffering": "no",
+            "x-vercel-ai-ui-message-stream": "v1",
+        },
+    )

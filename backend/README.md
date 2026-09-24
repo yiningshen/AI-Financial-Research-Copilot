@@ -34,8 +34,6 @@ uv run ruff format app/
 
 Alembic owns the schema. Never edit tables in the Supabase dashboard.
 
-Not initialized yet — run `uv run alembic init alembic` once, then point `alembic/env.py` at the app metadata and `settings.database_url`. After that:
-
 ```bash
 uv run alembic revision --autogenerate -m "describe change"   # then review the file
 uv run alembic upgrade head
