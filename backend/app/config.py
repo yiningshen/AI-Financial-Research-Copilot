@@ -5,13 +5,22 @@ anywhere else in the backend.
 """
 
 from pathlib import Path
-from typing import Annotated
+from typing import Annotated, Self
 from urllib.parse import urlsplit
 
-from pydantic import field_validator
+from pydantic import Field, field_validator, model_validator
 from pydantic_settings import BaseSettings, NoDecode, SettingsConfigDict
 
 ENV_FILE = Path(__file__).resolve().parent.parent / ".env"
+
+# Hard safety ceilings shared by settings validation and request-boundary models.
+MAX_RETRIEVAL_SEARCH_LIMIT = 100
+MAX_RETRIEVAL_NEIGHBOR_RADIUS = 5
+MAX_RETRIEVAL_TICKERS = 10
+MAX_RETRIEVAL_FORMS = 10
+MAX_RETRIEVAL_FISCAL_YEARS = 20
+MIN_RETRIEVAL_FISCAL_YEAR = 1900
+MAX_RETRIEVAL_FISCAL_YEAR = 2100
 
 
 class Settings(BaseSettings):
@@ -33,9 +42,7 @@ class Settings(BaseSettings):
     database_url: str
 
     # --- OpenAI (embeddings) ---
-    # The key stays optional until the embedding layer lands (build step 8); make it
-    # required then so a missing key fails at startup, not mid-ingestion.
-    openai_api_key: str | None = None
+    openai_api_key: str
     openai_embedding_model: str = "text-embedding-3-small"
     # Must match the `vector(N)` column width in the migrations. Changing this after
     # ingestion means re-embedding the whole corpus.
@@ -44,9 +51,25 @@ class Settings(BaseSettings):
     # --- DeepSeek (generation) ---
     # OpenAI-wire-compatible, so the OpenAI SDK works against this base URL. DeepSeek
     # serves no embeddings endpoint, which is why embeddings stay on OpenAI above.
-    deepseek_api_key: str | None = None
+    deepseek_api_key: str
     deepseek_base_url: str = "https://api.deepseek.com"
     deepseek_chat_model: str = "deepseek-flash"
+
+    # --- Retrieval ---
+    retrieval_candidate_count: int = Field(
+        default=50, ge=1, le=MAX_RETRIEVAL_SEARCH_LIMIT
+    )
+    retrieval_result_count: int = Field(
+        default=10, ge=1, le=MAX_RETRIEVAL_SEARCH_LIMIT
+    )
+    retrieval_rrf_k: int = Field(default=60, gt=0)
+    retrieval_neighbor_radius: int = Field(
+        default=1, ge=0, le=MAX_RETRIEVAL_NEIGHBOR_RADIUS
+    )
+
+    # --- Agent execution ---
+    agent_max_model_requests: int = Field(default=8, gt=0)
+    agent_max_tool_calls: int = Field(default=6, gt=0)
 
     # --- Server ---
     # Comma-separated in the environment: "http://localhost:5173,https://app.example.com"
@@ -56,6 +79,15 @@ class Settings(BaseSettings):
     @classmethod
     def _split_origins(cls, value: str) -> list[str]:
         return [origin.strip() for origin in value.split(",") if origin.strip()]
+
+    @model_validator(mode="after")
+    def _validate_retrieval_defaults(self) -> Self:
+        if self.retrieval_result_count > self.retrieval_candidate_count:
+            raise ValueError(
+                "RETRIEVAL_RESULT_COUNT must not exceed "
+                "RETRIEVAL_CANDIDATE_COUNT"
+            )
+        return self
 
     @property
     def sqlalchemy_database_url(self) -> str:

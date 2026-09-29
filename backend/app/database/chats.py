@@ -85,6 +85,8 @@ class ChatRepository:
         assistant_message_id: UUID,
         assistant_content: str,
         assistant_parts: list[dict[str, Any]],
+        assistant_usage: dict[str, Any],
+        citations: list[dict[str, Any]],
     ) -> None:
         await self.user_client.rpc(
             "persist_chat_turn",
@@ -96,6 +98,8 @@ class ChatRepository:
                 "p_assistant_message_id": str(assistant_message_id),
                 "p_assistant_content": assistant_content,
                 "p_assistant_parts": assistant_parts,
+                "p_assistant_usage": assistant_usage,
+                "p_citations": citations,
             },
         ).execute()
 

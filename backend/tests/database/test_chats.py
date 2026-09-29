@@ -71,6 +71,17 @@ def test_persist_turn_calls_atomic_rpc():
             assistant_message_id=assistant_message_id,
             assistant_content="Answer",
             assistant_parts=[{"type": "text", "text": "Answer"}],
+            assistant_usage={"input_tokens": 10, "output_tokens": 5},
+            citations=[
+                {
+                    "document_id": str(uuid4()),
+                    "chunk_id": str(uuid4()),
+                    "position": 1,
+                    "quoted_text": "Evidence",
+                    "page": 2,
+                    "section": "Results",
+                }
+            ],
         )
     )
 
@@ -79,3 +90,5 @@ def test_persist_turn_calls_atomic_rpc():
     assert params["p_thread_id"] == str(thread_id)
     assert params["p_user_message_id"] == str(user_message_id)
     assert params["p_assistant_message_id"] == str(assistant_message_id)
+    assert params["p_assistant_usage"]["input_tokens"] == 10
+    assert params["p_citations"][0]["position"] == 1

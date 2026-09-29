@@ -47,6 +47,14 @@ All environment access goes through `app/config.py`. Import `settings` from ther
 
 Generation runs on DeepSeek via its OpenAI-compatible API; embeddings run on OpenAI, which is why both keys exist.
 
+Retrieval defaults and agent execution budgets are also validated in
+`app/config.py`. They can be overridden with `RETRIEVAL_*` and
+`AGENT_MAX_*` environment variables documented in `.env.example`; invalid
+values fail during startup.
+
+The hybrid search stages, concurrency model, live smoke test, and grounding
+contract are documented in [app/retrieval/README.md](app/retrieval/README.md).
+
 ## Troubleshooting
 
 **`ModuleNotFoundError: No module named 'fastapi'` (or `'app'`)** — you ran the wrong Python. Dependencies live only in `backend/.venv`, so any other interpreter fails. Prefix commands with `uv run`, or point your editor at:

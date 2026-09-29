@@ -6,7 +6,10 @@ from uuid import UUID, uuid4
 import httpx
 import pytest
 from postgrest import APIError
+from pydantic_ai.exceptions import AgentRunError
 
+from app.assistant.outputs import GroundedAnswer
+from app.chat.orchestrator import PreparedTurn, get_turn_preparer
 from app.database.chats import (
     ThreadForbiddenError,
     ThreadNotFoundError,
@@ -35,9 +38,7 @@ class FakeChatRepository:
                 "thread_id": str(THREAD_ID),
                 "role": "user",
                 "content": "What drove revenue growth?",
-                "parts": [
-                    {"type": "text", "text": "What drove revenue growth?"}
-                ],
+                "parts": [{"type": "text", "text": "What drove revenue growth?"}],
                 "usage": None,
                 "created_at": NOW,
                 "citations": [],
@@ -73,6 +74,7 @@ def _request(
     path: str,
     *,
     repository=None,
+    preparer=None,
     json_body=None,
 ) -> httpx.Response:
     async def send() -> httpx.Response:
@@ -85,6 +87,8 @@ def _request(
 
     if repository is not None:
         app.dependency_overrides[get_chat_repository] = lambda: repository
+    if preparer is not None:
+        app.dependency_overrides[get_turn_preparer] = lambda: preparer
     try:
         return asyncio.run(send())
     finally:
@@ -105,6 +109,14 @@ def _stream_request(thread_id: UUID = THREAD_ID) -> dict:
             }
         ],
     }
+
+
+async def prepare_test_turn(**kwargs):
+    return PreparedTurn(
+        answer=GroundedAnswer(status="answered", answer="Grounded answer. [1]"),
+        sources=(),
+        usage={"model": "test", "total_tokens": 10},
+    )
 
 
 def _events(response: httpx.Response) -> list[dict | str]:
@@ -178,6 +190,7 @@ def test_stream_rejects_another_users_thread():
         "POST",
         "/chat/stream",
         repository=FakeChatRepository(),
+        preparer=prepare_test_turn,
         json_body=_stream_request(OTHER_THREAD_ID),
     )
 
@@ -192,6 +205,7 @@ def test_stream_rejects_a_non_user_final_message():
         "POST",
         "/chat/stream",
         repository=FakeChatRepository(),
+        preparer=prepare_test_turn,
         json_body=body,
     )
 
@@ -205,6 +219,7 @@ def test_stream_returns_ai_sdk_events_and_persists_turn():
         "POST",
         "/chat/stream",
         repository=repository,
+        preparer=prepare_test_turn,
         json_body=_stream_request(),
     )
     events = _events(response)
@@ -216,7 +231,6 @@ def test_stream_returns_ai_sdk_events_and_persists_turn():
         "start",
         "text-start",
         "text-delta",
-        "text-delta",
         "text-end",
         "finish",
     ]
@@ -225,6 +239,22 @@ def test_stream_returns_ai_sdk_events_and_persists_turn():
     call = repository.persist_calls[0]
     assert call["user_content"] == "What drove revenue growth?"
     assert str(call["assistant_message_id"]) == events[0]["messageId"]
+
+
+def test_stream_returns_502_when_agent_preparation_fails():
+    async def fail_preparation(**kwargs):
+        raise AgentRunError("model failed")
+
+    response = _request(
+        "POST",
+        "/chat/stream",
+        repository=FakeChatRepository(),
+        preparer=fail_preparation,
+        json_body=_stream_request(),
+    )
+
+    assert response.status_code == 502
+    assert response.json()["detail"] == "Unable to generate a grounded response"
 
 
 def test_stream_emits_error_without_finish_when_persistence_fails():
@@ -237,6 +267,7 @@ def test_stream_emits_error_without_finish_when_persistence_fails():
         "POST",
         "/chat/stream",
         repository=repository,
+        preparer=prepare_test_turn,
         json_body=_stream_request(),
     )
     events = _events(response)

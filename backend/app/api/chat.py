@@ -1,22 +1,26 @@
 """Chat thread and streaming API routes."""
 
 from datetime import datetime
-from typing import Any
+from typing import Annotated, Any
 from uuid import UUID
 
 import httpx
-from fastapi import APIRouter, HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException, status
 from fastapi.responses import StreamingResponse
+from openai import OpenAIError
 from postgrest import APIError
 from pydantic import BaseModel, Field, field_validator
+from pydantic_ai.exceptions import AgentRunError
 
 from app.chat.messages import ChatStreamRequest
-from app.chat.streaming import stream_stub_reply
+from app.chat.orchestrator import TurnPreparer, get_turn_preparer
+from app.chat.streaming import stream_grounded_reply
 from app.database.chats import (
     ChatRepositoryDependency,
     ThreadForbiddenError,
     ThreadNotFoundError,
 )
+from app.grounding.validator import GroundingError
 
 router = APIRouter(prefix="/chat", tags=["chat"])
 
@@ -70,6 +74,10 @@ def _upstream_error() -> HTTPException:
     return HTTPException(status_code=502, detail="Chat storage is unavailable")
 
 
+def _assistant_error() -> HTTPException:
+    return HTTPException(status_code=502, detail="Unable to generate a grounded response")
+
+
 @router.get("/threads", response_model=list[ThreadResponse])
 async def list_threads(
     repository: ChatRepositoryDependency,
@@ -115,6 +123,7 @@ async def get_thread_messages(
 async def stream_chat(
     request: ChatStreamRequest,
     repository: ChatRepositoryDependency,
+    prepare: Annotated[TurnPreparer, Depends(get_turn_preparer)],
 ) -> StreamingResponse:
     try:
         await repository.require_thread(request.thread_id)
@@ -123,11 +132,27 @@ async def stream_chat(
     except (APIError, httpx.HTTPError) as exc:
         raise _upstream_error() from exc
 
+    try:
+        turn = await prepare(
+            repository=repository,
+            thread_id=request.thread_id,
+            question=request.final_user_message.text(),
+        )
+    except (
+        AgentRunError,
+        APIError,
+        GroundingError,
+        OpenAIError,
+        httpx.HTTPError,
+    ) as exc:
+        raise _assistant_error() from exc
+
     return StreamingResponse(
-        stream_stub_reply(
+        stream_grounded_reply(
             repository=repository,
             thread_id=request.thread_id,
             user_message=request.final_user_message,
+            turn=turn,
         ),
         media_type="text/event-stream",
         headers={
