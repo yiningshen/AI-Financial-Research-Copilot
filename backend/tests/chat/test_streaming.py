@@ -78,6 +78,7 @@ def test_persistence_happens_after_text_and_before_finish():
         "finish",
         "done",
     ]
+    assert "data-answer-status" in timeline
 
 
 def test_stopping_stream_early_does_not_persist():

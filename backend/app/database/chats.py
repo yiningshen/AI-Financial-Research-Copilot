@@ -14,7 +14,9 @@ THREAD_FIELDS = "id,title,created_at,updated_at"
 MESSAGE_FIELDS = (
     "id,thread_id,role,content,parts,usage,created_at,"
     "citations:message_citations("
-    "id,document_id,chunk_id,position,quoted_text,page,section)"
+    "id,document_id,chunk_id,position,quoted_text,page,section,"
+    "document:source_documents("
+    "ticker,company_name,form,filing_date,fiscal_year,accession_number,source_url))"
 )
 
 

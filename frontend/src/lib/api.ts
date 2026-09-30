@@ -17,6 +17,15 @@ export type MessageCitation = {
   quoted_text: string
   page: number | null
   section: string | null
+  document: {
+    ticker: string
+    company_name: string | null
+    form: string
+    filing_date: string
+    fiscal_year: number | null
+    accession_number: string
+    source_url: string
+  }
 }
 
 export type ChatMessage = {

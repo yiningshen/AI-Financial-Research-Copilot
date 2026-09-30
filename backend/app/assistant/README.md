@@ -30,6 +30,11 @@ passes the user's question plus history loaded from Supabase to `document_agent`
 The agent searches the corpus, returns typed JSON, and runs the grounding
 validator before the orchestrator can stream or persist the answer.
 
+Validated streams include a typed answer-status part and one rich citation data
+part per source. Citation parts contain trusted filing metadata and the exact
+verified quote; both are persisted with the message so live and reloaded answers
+use the same frontend contract.
+
 ## Model configuration
 
 `agent.py` creates an `OpenAIChatModel` pointed at DeepSeek's OpenAI-compatible

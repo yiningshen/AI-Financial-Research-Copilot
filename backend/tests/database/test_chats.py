@@ -8,14 +8,19 @@ from app.database.chats import ChatRepository, ThreadForbiddenError
 class Query:
     def __init__(self, data):
         self.data = data
+        self.selected_fields = None
 
-    def select(self, *args, **kwargs):
+    def select(self, fields, *args, **kwargs):
+        self.selected_fields = fields
         return self
 
     def eq(self, *args, **kwargs):
         return self
 
     def limit(self, *args, **kwargs):
+        return self
+
+    def order(self, *args, **kwargs):
         return self
 
     async def execute(self):
@@ -26,9 +31,11 @@ class Client:
     def __init__(self, *, table_data=None):
         self.table_data = table_data or []
         self.rpc_call = None
+        self.last_query = None
 
     def table(self, name):
-        return Query(self.table_data)
+        self.last_query = Query(self.table_data)
+        return self.last_query
 
     def rpc(self, name, params):
         self.rpc_call = (name, params)
@@ -49,6 +56,21 @@ def test_require_thread_rejects_another_owner():
         pass
     else:
         raise AssertionError("Expected access to another user's thread to fail")
+
+
+def test_message_history_selects_filing_metadata_for_citations():
+    user_id = str(uuid4())
+    user_client = Client()
+    repository = ChatRepository(
+        user_id=user_id,
+        user_client=user_client,
+        service_client=Client(table_data=[{"user_id": user_id}]),
+    )
+
+    asyncio.run(repository.get_messages(uuid4()))
+
+    assert user_client.last_query is not None
+    assert "document:source_documents" in user_client.last_query.selected_fields
 
 
 def test_persist_turn_calls_atomic_rpc():

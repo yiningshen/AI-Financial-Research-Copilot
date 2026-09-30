@@ -4,8 +4,8 @@ Order follows [architecture.md](architecture.md#implementation-sequence): stand 
 
 ## Progress audit (2026-09-28)
 
-- Checklist count: 55 of 79 items complete (70%); grounding work appears in both sections 9 and 10, so this is a tracking ratio rather than an effort estimate.
-- Automated checks: 82 backend tests pass (2 live integration tests excluded); frontend type-check, lint, and production build pass.
+- Checklist count: 60 of 79 items complete (76%); grounding work appears in both sections 9 and 10, so this is a tracking ratio rather than an effort estimate.
+- Automated checks: 88 backend tests pass (2 live integration tests excluded); frontend type-check, lint, and production build pass.
 - Live integration: the grounded agent retrieved Apple filing evidence through OpenAI/Supabase, generated with DeepSeek, and passed citation validation.
 - Live database: Alembic reports revision `a13d8e5b72c4 (head)`.
 - Local corpus: all 25 Markdown filings across five companies are present.
@@ -120,11 +120,11 @@ Reference pattern: [AI Cookbook hybrid retrieval](https://github.com/daveebbelaa
 
 Goal: analysts can verify every claim in one click — this is what makes the product usable.
 
-- [ ] Citation chips/links on assistant messages (company, filing type, date, page/section)
-- [ ] Source passage panel — show the underlying excerpt for the selected citation
-- [ ] Empty states (no threads, no corpus match)
-- [ ] Error states (auth expired, retrieval failure, grounding failure, network/CORS); map the `401/403/404/422/502/500` classes defined in [architecture.md](architecture.md#error-handling)
-- [ ] Loading/streaming status during the assistant run
+- [x] Citation chips/links on assistant messages (company, filing type, date, page/section)
+- [x] Source passage panel — show the underlying excerpt for the selected citation
+- [x] Empty states (no threads, no corpus match)
+- [x] Error states (auth expired, retrieval failure, grounding failure, network/CORS); map the `401/403/404/422/502/500` classes defined in [architecture.md](architecture.md#error-handling)
+- [x] Loading/streaming status during the assistant run
 - [ ] Verify: click a citation → see the exact passage from the filing
 
 ## 13. Validate against the brief

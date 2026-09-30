@@ -26,12 +26,16 @@ async def stream_grounded_reply(
     user_message_id = uuid4()
     assistant_message_id = uuid4()
     text_id = f"text-{uuid4()}"
+    status_part = {
+        "type": "data-answer-status",
+        "id": "answer-status",
+        "data": {"status": turn.answer.status},
+    }
 
     yield _event({"type": "start", "messageId": str(assistant_message_id)})
+    yield _event(status_part)
     yield _event({"type": "text-start", "id": text_id})
-    yield _event(
-        {"type": "text-delta", "id": text_id, "delta": turn.answer.answer}
-    )
+    yield _event({"type": "text-delta", "id": text_id, "delta": turn.answer.answer})
     yield _event({"type": "text-end", "id": text_id})
 
     citation_parts = [
@@ -46,6 +50,7 @@ async def stream_grounded_reply(
         yield _event(part)
 
     assistant_parts = [
+        status_part,
         {"type": "text", "text": turn.answer.answer},
         *citation_parts,
     ]

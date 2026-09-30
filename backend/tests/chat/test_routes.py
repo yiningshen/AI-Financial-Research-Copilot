@@ -15,6 +15,7 @@ from app.database.chats import (
     ThreadNotFoundError,
     get_chat_repository,
 )
+from app.grounding.validator import GroundingError
 from app.main import app
 
 THREAD_ID = uuid4()
@@ -160,6 +161,37 @@ def test_create_thread_normalizes_title():
 
 def test_load_message_history():
     repository = FakeChatRepository()
+    repository.messages.append(
+        {
+            "id": str(uuid4()),
+            "thread_id": str(THREAD_ID),
+            "role": "assistant",
+            "content": "Revenue increased. [1]",
+            "parts": [{"type": "text", "text": "Revenue increased. [1]"}],
+            "usage": None,
+            "created_at": NOW,
+            "citations": [
+                {
+                    "id": str(uuid4()),
+                    "document_id": str(uuid4()),
+                    "chunk_id": str(uuid4()),
+                    "position": 1,
+                    "quoted_text": "Revenue increased.",
+                    "page": 10,
+                    "section": "Results",
+                    "document": {
+                        "ticker": "AAPL",
+                        "company_name": "Apple Inc.",
+                        "form": "10-K",
+                        "filing_date": "2025-10-31",
+                        "fiscal_year": 2025,
+                        "accession_number": "0001",
+                        "source_url": "https://example.com/filing",
+                    },
+                }
+            ],
+        }
+    )
 
     response = _request(
         "GET",
@@ -169,6 +201,9 @@ def test_load_message_history():
 
     assert response.status_code == 200
     assert response.json()[0]["content"] == "What drove revenue growth?"
+    citation = response.json()[1]["citations"][0]
+    assert citation["quoted_text"] == "Revenue increased."
+    assert citation["document"]["ticker"] == "AAPL"
 
 
 @pytest.mark.parametrize(
@@ -229,6 +264,7 @@ def test_stream_returns_ai_sdk_events_and_persists_turn():
     assert response.headers["x-vercel-ai-ui-message-stream"] == "v1"
     assert [event["type"] for event in events[:-1]] == [
         "start",
+        "data-answer-status",
         "text-start",
         "text-delta",
         "text-end",
@@ -239,6 +275,11 @@ def test_stream_returns_ai_sdk_events_and_persists_turn():
     call = repository.persist_calls[0]
     assert call["user_content"] == "What drove revenue growth?"
     assert str(call["assistant_message_id"]) == events[0]["messageId"]
+    assert call["assistant_parts"][0] == {
+        "type": "data-answer-status",
+        "id": "answer-status",
+        "data": {"status": "answered"},
+    }
 
 
 def test_stream_returns_502_when_agent_preparation_fails():
@@ -254,7 +295,26 @@ def test_stream_returns_502_when_agent_preparation_fails():
     )
 
     assert response.status_code == 502
-    assert response.json()["detail"] == "Unable to generate a grounded response"
+    assert response.json()["detail"] == {
+        "code": "assistant_failed",
+        "message": "Unable to generate a grounded response",
+    }
+
+
+def test_stream_identifies_grounding_failures():
+    async def fail_grounding(**kwargs):
+        raise GroundingError("unsupported citation")
+
+    response = _request(
+        "POST",
+        "/chat/stream",
+        repository=FakeChatRepository(),
+        preparer=fail_grounding,
+        json_body=_stream_request(),
+    )
+
+    assert response.status_code == 502
+    assert response.json()["detail"]["code"] == "grounding_failed"
 
 
 def test_stream_emits_error_without_finish_when_persistence_fails():

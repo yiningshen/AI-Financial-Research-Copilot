@@ -10,6 +10,7 @@ export type HttpOptions = Omit<RequestInit, "body" | "method"> & {
 type ApiErrorOptions = {
   status: number | null
   body?: unknown
+  code?: string | null
   isNetworkError?: boolean
   cause?: unknown
 }
@@ -17,6 +18,7 @@ type ApiErrorOptions = {
 export class ApiError extends Error {
   readonly status: number | null
   readonly body: unknown
+  readonly code: string | null
   readonly isNetworkError: boolean
 
   constructor(message: string, options: ApiErrorOptions) {
@@ -24,11 +26,12 @@ export class ApiError extends Error {
     this.name = "ApiError"
     this.status = options.status
     this.body = options.body
+    this.code = options.code ?? null
     this.isNetworkError = options.isNetworkError ?? false
   }
 }
 
-async function getAccessToken(): Promise<string> {
+export async function getApiAccessToken(): Promise<string> {
   try {
     return await getSupabaseAccessToken()
   } catch (error) {
@@ -39,21 +42,39 @@ async function getAccessToken(): Promise<string> {
   }
 }
 
-function errorMessage(body: unknown, status: number): string {
+function errorDetails(
+  body: unknown,
+  status: number,
+): { message: string; code: string | null } {
   if (
     typeof body === "object" &&
     body !== null &&
-    "detail" in body &&
-    typeof body.detail === "string"
+    "detail" in body
   ) {
-    return body.detail
+    if (typeof body.detail === "string") {
+      return { message: body.detail, code: null }
+    }
+    if (
+      typeof body.detail === "object" &&
+      body.detail !== null &&
+      "message" in body.detail &&
+      typeof body.detail.message === "string"
+    ) {
+      return {
+        message: body.detail.message,
+        code:
+          "code" in body.detail && typeof body.detail.code === "string"
+            ? body.detail.code
+            : null,
+      }
+    }
   }
 
   if (typeof body === "string" && body.trim() !== "") {
-    return body
+    return { message: body, code: null }
   }
 
-  return `Request failed with status ${status}`
+  return { message: `Request failed with status ${status}`, code: null }
 }
 
 async function responseBody(response: Response): Promise<unknown> {
@@ -78,7 +99,7 @@ export async function request<T>(
     throw new Error("API request paths must start with /")
   }
 
-  const accessToken = await getAccessToken()
+  const accessToken = await getApiAccessToken()
   const controller = new AbortController()
   let didTimeout = false
   const abortFromCaller = () => controller.abort(init.signal?.reason)
@@ -101,9 +122,11 @@ export async function request<T>(
     const body = await responseBody(response)
 
     if (!response.ok) {
-      throw new ApiError(errorMessage(body, response.status), {
+      const details = errorDetails(body, response.status)
+      throw new ApiError(details.message, {
         status: response.status,
         body,
+        code: details.code,
       })
     }
 
@@ -125,6 +148,34 @@ export async function request<T>(
     globalThis.clearTimeout(timeoutId)
     init.signal?.removeEventListener("abort", abortFromCaller)
   }
+}
+
+export async function checkedFetch(
+  input: RequestInfo | URL,
+  init?: RequestInit,
+): Promise<Response> {
+  let response: Response
+  try {
+    response = await fetch(input, init)
+  } catch (error) {
+    throw new ApiError("Unable to reach the server.", {
+      status: null,
+      isNetworkError: true,
+      cause: error,
+    })
+  }
+
+  if (!response.ok) {
+    const body = await responseBody(response)
+    const details = errorDetails(body, response.status)
+    throw new ApiError(details.message, {
+      status: response.status,
+      body,
+      code: details.code,
+    })
+  }
+
+  return response
 }
 
 function jsonBody(

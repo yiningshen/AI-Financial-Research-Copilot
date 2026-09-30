@@ -1,11 +1,15 @@
 import { useCallback, useEffect, useState } from "react"
 import { useNavigate, useParams } from "react-router-dom"
-import type { UIMessage } from "ai"
 
+import { ChatErrorState } from "@/components/chat/ChatErrorState"
 import { ChatPanel } from "@/components/chat/ChatPanel"
 import { ThreadSidebar } from "@/components/chat/ThreadSidebar"
 import { Button } from "@/components/ui/button"
 import { api, type ChatMessage, type ChatThread } from "@/lib/api"
+import {
+  toDocumentUiMessage,
+  type DocumentUIMessage,
+} from "@/lib/chat-messages"
 import { ApiError } from "@/lib/http"
 
 type ChatPageProps = {
@@ -16,22 +20,12 @@ type ChatPageProps = {
 
 type ThreadHistory = {
   threadId: string
-  messages: UIMessage[] | null
-  error: string | null
+  messages: DocumentUIMessage[] | null
+  error: unknown
 }
 
 function errorMessage(error: unknown, fallback: string) {
   return error instanceof ApiError ? error.message : fallback
-}
-
-function toUiMessage(message: ChatMessage): UIMessage {
-  return {
-    id: message.id,
-    role: message.role,
-    parts: Array.isArray(message.parts)
-      ? (message.parts as UIMessage["parts"])
-      : [{ type: "text", text: message.content }],
-  }
 }
 
 export function ChatPage({ email, signOutError, onSignOut }: ChatPageProps) {
@@ -42,6 +36,7 @@ export function ChatPage({ email, signOutError, onSignOut }: ChatPageProps) {
   const [isLoadingThreads, setIsLoadingThreads] = useState(true)
   const [isCreating, setIsCreating] = useState(false)
   const [sidebarError, setSidebarError] = useState<string | null>(null)
+  const [historyRetry, setHistoryRetry] = useState(0)
 
   const loadThreads = useCallback(async () => {
     try {
@@ -95,7 +90,9 @@ export function ChatPage({ email, signOutError, onSignOut }: ChatPageProps) {
         if (isCurrent) {
           setHistory({
             threadId,
-            messages: history.map(toUiMessage),
+            messages: history.map((message: ChatMessage) =>
+              toDocumentUiMessage(message),
+            ),
             error: null,
           })
         }
@@ -105,7 +102,7 @@ export function ChatPage({ email, signOutError, onSignOut }: ChatPageProps) {
           setHistory({
             threadId,
             messages: null,
-            error: errorMessage(error, "Unable to load this conversation."),
+            error,
           })
         }
       })
@@ -113,7 +110,7 @@ export function ChatPage({ email, signOutError, onSignOut }: ChatPageProps) {
     return () => {
       isCurrent = false
     }
-  }, [threadId])
+  }, [historyRetry, threadId])
 
   async function createThread() {
     setIsCreating(true)
@@ -185,17 +182,17 @@ export function ChatPage({ email, signOutError, onSignOut }: ChatPageProps) {
               </Button>
             </div>
           ) : activeHistory?.error ? (
-            <div className="m-auto max-w-md p-8 text-center">
-              <p className="text-sm text-destructive" role="alert">
-                {activeHistory.error}
-              </p>
-              <Button
-                className="mt-4"
-                variant="outline"
-                onClick={() => navigate("/chats")}
-              >
-                Back to conversations
-              </Button>
+            <div className="m-auto w-full max-w-md p-8">
+              <ChatErrorState
+                error={activeHistory.error}
+                onBack={() => navigate("/chats")}
+                onDismiss={() => navigate("/chats")}
+                onRetry={() => {
+                  setHistory(null)
+                  setHistoryRetry((current) => current + 1)
+                }}
+                onSignIn={() => void onSignOut()}
+              />
             </div>
           ) : activeHistory?.messages == null ? (
             <div className="m-auto text-sm text-muted-foreground">
@@ -207,6 +204,8 @@ export function ChatPage({ email, signOutError, onSignOut }: ChatPageProps) {
               threadId={threadId}
               initialMessages={activeHistory.messages}
               onTurnFinished={() => void loadThreads()}
+              onAuthExpired={() => void onSignOut()}
+              onLeaveThread={() => navigate("/chats")}
             />
           )}
         </section>

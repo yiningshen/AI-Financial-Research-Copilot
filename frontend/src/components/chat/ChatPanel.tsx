@@ -1,39 +1,60 @@
 import { useMemo, useState, type FormEvent } from "react"
 import { useChat } from "@ai-sdk/react"
-import { DefaultChatTransport, type UIMessage } from "ai"
+import { DefaultChatTransport } from "ai"
 
+import { ChatErrorState } from "@/components/chat/ChatErrorState"
 import { ChatMessage } from "@/components/chat/ChatMessage"
+import { SourcePassagePanel } from "@/components/chat/SourcePassagePanel"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
+import type {
+  CitationSource,
+  DocumentUIMessage,
+} from "@/lib/chat-messages"
 import { env } from "@/lib/env"
-import { getAccessToken } from "@/lib/supabase"
+import { checkedFetch, getApiAccessToken } from "@/lib/http"
 
 type ChatPanelProps = {
   threadId: string
-  initialMessages: UIMessage[]
+  initialMessages: DocumentUIMessage[]
   onTurnFinished: () => void
+  onAuthExpired: () => void
+  onLeaveThread: () => void
 }
 
 export function ChatPanel({
   threadId,
   initialMessages,
   onTurnFinished,
+  onAuthExpired,
+  onLeaveThread,
 }: ChatPanelProps) {
   const [input, setInput] = useState("")
+  const [selectedCitation, setSelectedCitation] =
+    useState<CitationSource | null>(null)
   const transport = useMemo(
     () =>
-      new DefaultChatTransport({
+      new DefaultChatTransport<DocumentUIMessage>({
         api: `${env.apiBaseUrl}/chat/stream`,
         headers: async () => ({
-          Authorization: `Bearer ${await getAccessToken()}`,
+          Authorization: `Bearer ${await getApiAccessToken()}`,
         }),
+        fetch: checkedFetch,
         prepareSendMessagesRequest: ({ messages }) => ({
           body: { threadId, messages },
         }),
       }),
     [threadId],
   )
-  const { messages, sendMessage, status, error, stop, clearError } = useChat({
+  const {
+    messages,
+    sendMessage,
+    regenerate,
+    status,
+    error,
+    stop,
+    clearError,
+  } = useChat<DocumentUIMessage>({
     id: threadId,
     messages: initialMessages,
     transport,
@@ -67,21 +88,47 @@ export function ChatPanel({
               Answers are grounded in the filing corpus and include source
               citations when evidence is available.
             </p>
+            <div className="mt-4 space-y-1 text-xs text-muted-foreground">
+              <p>Try: “What drove Apple Services growth?”</p>
+              <p>Try: “Compare Microsoft cloud revenue across 2023–2025.”</p>
+            </div>
           </div>
         ) : (
           messages.map((message) => (
-            <ChatMessage key={message.id} message={message} />
+            <ChatMessage
+              key={message.id}
+              message={message}
+              onCitationSelect={setSelectedCitation}
+            />
           ))
         )}
+
+        {isBusy ? (
+          <div
+            className="mr-auto flex items-center gap-2 rounded-lg border bg-background px-3 py-2 text-xs text-muted-foreground shadow-xs"
+            role="status"
+          >
+            <span className="size-2 animate-pulse rounded-full bg-primary" />
+            {status === "submitted"
+              ? "Searching filings and validating evidence…"
+              : "Preparing the cited answer…"}
+          </div>
+        ) : null}
       </div>
 
       <div className="border-t bg-background p-4">
         {error ? (
-          <div className="mb-3 flex items-center justify-between gap-3 text-sm text-destructive">
-            <p role="alert">{error.message}</p>
-            <Button type="button" variant="ghost" onClick={clearError}>
-              Dismiss
-            </Button>
+          <div className="mb-3">
+            <ChatErrorState
+              error={error}
+              onBack={onLeaveThread}
+              onDismiss={clearError}
+              onRetry={() => {
+                clearError()
+                void regenerate()
+              }}
+              onSignIn={onAuthExpired}
+            />
           </div>
         ) : null}
 
@@ -106,10 +153,15 @@ export function ChatPanel({
 
         {isBusy ? (
           <p className="mt-2 text-xs text-muted-foreground">
-            {status === "submitted" ? "Sending…" : "Receiving response…"}
+            You can stop the run while Document Copilot is working.
           </p>
         ) : null}
       </div>
+
+      <SourcePassagePanel
+        citation={selectedCitation}
+        onClose={() => setSelectedCitation(null)}
+      />
     </section>
   )
 }

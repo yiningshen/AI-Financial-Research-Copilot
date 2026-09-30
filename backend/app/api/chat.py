@@ -1,6 +1,6 @@
 """Chat thread and streaming API routes."""
 
-from datetime import datetime
+from datetime import date, datetime
 from typing import Annotated, Any
 from uuid import UUID
 
@@ -43,6 +43,16 @@ class ThreadResponse(BaseModel):
     updated_at: datetime
 
 
+class CitationDocumentResponse(BaseModel):
+    ticker: str
+    company_name: str | None
+    form: str
+    filing_date: date
+    fiscal_year: int | None
+    accession_number: str
+    source_url: str
+
+
 class CitationResponse(BaseModel):
     id: UUID
     document_id: UUID
@@ -51,6 +61,7 @@ class CitationResponse(BaseModel):
     quoted_text: str
     page: int | None
     section: str | None
+    document: CitationDocumentResponse
 
 
 class MessageResponse(BaseModel):
@@ -64,18 +75,25 @@ class MessageResponse(BaseModel):
     citations: list[CitationResponse] = Field(default_factory=list)
 
 
+def _error(status_code: int, code: str, message: str) -> HTTPException:
+    return HTTPException(
+        status_code=status_code,
+        detail={"code": code, "message": message},
+    )
+
+
 def _thread_access_error(exc: Exception) -> HTTPException:
     if isinstance(exc, ThreadForbiddenError):
-        return HTTPException(status_code=403, detail="Thread access denied")
-    return HTTPException(status_code=404, detail="Thread not found")
+        return _error(403, "thread_forbidden", "Thread access denied")
+    return _error(404, "thread_not_found", "Thread not found")
 
 
 def _upstream_error() -> HTTPException:
-    return HTTPException(status_code=502, detail="Chat storage is unavailable")
+    return _error(502, "storage_failed", "Chat storage is unavailable")
 
 
-def _assistant_error() -> HTTPException:
-    return HTTPException(status_code=502, detail="Unable to generate a grounded response")
+def _assistant_error(code: str, message: str) -> HTTPException:
+    return _error(502, code, message)
 
 
 @router.get("/threads", response_model=list[ThreadResponse])
@@ -138,14 +156,21 @@ async def stream_chat(
             thread_id=request.thread_id,
             question=request.final_user_message.text(),
         )
-    except (
-        AgentRunError,
-        APIError,
-        GroundingError,
-        OpenAIError,
-        httpx.HTTPError,
-    ) as exc:
-        raise _assistant_error() from exc
+    except GroundingError as exc:
+        raise _assistant_error(
+            "grounding_failed",
+            "The response could not be verified against the retrieved filings",
+        ) from exc
+    except (APIError, httpx.HTTPError) as exc:
+        raise _assistant_error(
+            "retrieval_failed",
+            "Filing retrieval is temporarily unavailable",
+        ) from exc
+    except (AgentRunError, OpenAIError) as exc:
+        raise _assistant_error(
+            "assistant_failed",
+            "Unable to generate a grounded response",
+        ) from exc
 
     return StreamingResponse(
         stream_grounded_reply(
