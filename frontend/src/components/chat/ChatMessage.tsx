@@ -1,4 +1,5 @@
 import type { ReactNode } from "react"
+import { FileTextIcon, SparklesIcon } from "lucide-react"
 
 import {
   messageAnswerStatus,
@@ -87,45 +88,54 @@ export function ChatMessage({
   const answerStatus = messageAnswerStatus(message)
 
   return (
-    <article
-      className={isUser ? "ml-auto max-w-3xl" : "mr-auto max-w-3xl"}
-    >
-      <p className="mb-1 text-xs font-medium text-muted-foreground">
-        {isUser ? "You" : "Document Copilot"}
-      </p>
-      <div
-        className={
-          isUser
-            ? "whitespace-pre-wrap rounded-2xl bg-primary px-4 py-3 text-sm text-primary-foreground"
-            : "whitespace-pre-wrap rounded-2xl border bg-background px-4 py-3 text-sm leading-6 shadow-sm"
-        }
-      >
-        {isUser
-          ? text
-          : renderCitedText(text, citations, onCitationSelect)}
-      </div>
+    <article className={isUser ? "ml-auto max-w-2xl" : "w-full"}>
+      {isUser ? (
+        <div className="whitespace-pre-wrap rounded-2xl rounded-br-md bg-primary px-4 py-3 text-sm leading-6 text-primary-foreground shadow-sm">
+          {text}
+        </div>
+      ) : (
+        <div className="flex gap-3 sm:gap-4">
+          <span className="mt-0.5 flex size-8 shrink-0 items-center justify-center rounded-lg bg-primary/10 text-primary">
+            <SparklesIcon className="size-4" aria-hidden="true" />
+          </span>
+          <div className="min-w-0 flex-1">
+            <p className="mb-2 text-xs font-semibold uppercase tracking-[0.12em] text-muted-foreground">
+              Document Copilot
+            </p>
+            <div className="whitespace-pre-wrap text-sm leading-7 text-foreground">
+              {renderCitedText(text, citations, onCitationSelect)}
+            </div>
+          </div>
+        </div>
+      )}
 
       {!isUser && answerStatus === "insufficient_evidence" ? (
-        <p className="mt-2 rounded-md border border-dashed px-3 py-2 text-xs text-muted-foreground">
+        <p className="ml-11 mt-3 rounded-lg border border-dashed bg-muted/40 px-3 py-2.5 text-xs text-muted-foreground sm:ml-12">
           No matching filing evidence was found in the available corpus.
         </p>
       ) : null}
 
       {!isUser && citations.length > 0 ? (
-        <div className="mt-2 flex flex-wrap gap-2" aria-label="Sources">
+        <div className="ml-11 mt-4 border-t pt-3 sm:ml-12" aria-label="Sources">
+          <p className="mb-2 flex items-center gap-1.5 text-[11px] font-semibold uppercase tracking-[0.12em] text-muted-foreground">
+            <FileTextIcon className="size-3" aria-hidden="true" />
+            Sources
+          </p>
+          <div className="flex flex-wrap gap-2">
           {citations.map((citation) => (
             <button
               key={`${message.id}-${citation.position}`}
-              className="rounded-full border bg-background px-3 py-1.5 text-left text-xs text-muted-foreground shadow-xs transition-colors hover:bg-accent hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+              className="rounded-lg border border-primary/15 bg-primary/5 px-2.5 py-1.5 text-left text-xs text-muted-foreground transition-colors hover:border-primary/30 hover:bg-primary/10 hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
               type="button"
               onClick={() => onCitationSelect(citation)}
             >
-              <span className="font-medium text-foreground">
+              <span className="font-semibold text-primary">
                 [{citation.position}]
               </span>{" "}
               {citationLabel(citation)}
             </button>
           ))}
+          </div>
         </div>
       ) : null}
     </article>

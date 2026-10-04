@@ -2,6 +2,8 @@ import { useEffect, useState } from "react"
 import { BrowserRouter, Navigate, Route, Routes } from "react-router-dom"
 import type { Session } from "@supabase/supabase-js"
 
+import { BrandMark } from "@/components/BrandMark"
+import { Spinner } from "@/components/ui/spinner"
 import { api, type AuthenticatedUser } from "@/lib/api"
 import { ApiError } from "@/lib/http"
 import { supabase } from "@/lib/supabase"
@@ -87,8 +89,12 @@ function App() {
 
   if (isLoading) {
     return (
-      <main className="flex min-h-svh items-center justify-center bg-muted/40">
-        <p className="text-sm text-muted-foreground">Loading session…</p>
+      <main className="flex min-h-svh flex-col items-center justify-center gap-5 bg-background">
+        <BrandMark />
+        <p className="flex items-center gap-2 text-sm text-muted-foreground" role="status">
+          <Spinner className="text-primary" />
+          Loading your workspace…
+        </p>
       </main>
     )
   }
@@ -103,8 +109,12 @@ function App() {
     session === null ? (
       <Navigate to="/login" replace />
     ) : verification === null ? (
-      <main className="flex min-h-svh items-center justify-center bg-muted/40">
-        <p className="text-sm text-muted-foreground">Verifying session…</p>
+      <main className="flex min-h-svh flex-col items-center justify-center gap-5 bg-background">
+        <BrandMark />
+        <p className="flex items-center gap-2 text-sm text-muted-foreground" role="status">
+          <Spinner className="text-primary" />
+          Verifying secure access…
+        </p>
       </main>
     ) : verification.user === null ? (
       <main className="flex min-h-svh items-center justify-center bg-muted/40 px-4">
