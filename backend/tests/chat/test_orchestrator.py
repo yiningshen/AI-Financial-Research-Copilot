@@ -20,26 +20,29 @@ class Repository:
         ]
 
 
-class FakeAgent:
+class FakeAgentRunner:
     def __init__(self, passage):
         self.passage = passage
         self.calls = []
 
-    async def run(self, question, **kwargs):
+    async def __call__(self, question, **kwargs):
         self.calls.append((question, kwargs))
-        kwargs["deps"].remember([self.passage])
+        deps = kwargs["deps"]
+        deps.registry.register([self.passage])
+        answer = GroundedAnswer(
+            status="answered",
+            answer="Revenue increased. [1]",
+            citations=[
+                Citation(
+                    position=1,
+                    chunk_id=self.passage.chunk_id,
+                    quoted_text="Revenue increased.",
+                )
+            ],
+        )
         return SimpleNamespace(
-            output=GroundedAnswer(
-                status="answered",
-                answer="Revenue increased. [1]",
-                citations=[
-                    Citation(
-                        position=1,
-                        chunk_id=self.passage.chunk_id,
-                        quoted_text="Revenue increased.",
-                    )
-                ],
-            ),
+            answer=answer,
+            sources=deps.grounding_validator.validate(answer, deps.registry),
             usage=SimpleNamespace(
                 requests=2,
                 tool_calls=1,
@@ -82,14 +85,14 @@ def test_message_history_uses_only_supported_persisted_roles():
 
 def test_prepare_turn_validates_sources_and_records_usage():
     passage = make_passage()
-    agent = FakeAgent(passage)
+    agent = FakeAgentRunner(passage)
 
     turn = asyncio.run(
         prepare_turn(
             repository=Repository(),
             thread_id=uuid4(),
             question="What changed?",
-            agent=agent,
+            run_agent=agent,
         )
     )
 

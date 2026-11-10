@@ -3,12 +3,11 @@ from uuid import uuid4
 
 import pytest
 
-from app.assistant.deps import DocumentAgentDeps
-from app.grounding.validator import GroundingValidator
+from app.assistant.deps import TurnRegistry
 from app.retrieval.models import RetrievedPassage
 
 
-def test_evidence_ledger_only_allows_remembered_chunks():
+def test_turn_registry_only_allows_registered_chunks():
     passage = RetrievedPassage(
         chunk_id=uuid4(),
         document_id=uuid4(),
@@ -22,15 +21,11 @@ def test_evidence_ledger_only_allows_remembered_chunks():
         is_seed=True,
         seed_chunk_ids=(),
     )
-    deps = DocumentAgentDeps(
-        user_id=str(uuid4()),
-        thread_id=uuid4(),
-        retriever=object(),
-        grounding_validator=GroundingValidator(),
-    )
+    registry = TurnRegistry()
 
     with pytest.raises(ValueError, match="discovered"):
-        deps.require_retrieved(passage.chunk_id)
+        registry.require(passage.chunk_id)
 
-    deps.remember([passage])
-    deps.require_retrieved(passage.chunk_id)
+    registry.register([passage])
+    registry.require(passage.chunk_id)
+    assert registry.passages[passage.chunk_id] == passage

@@ -94,7 +94,7 @@ Reference pattern: [AI Cookbook hybrid retrieval](https://github.com/daveebbelaa
 - [x] `app/assistant/instructions.md` — product contract: cite everything, refuse to invent or infer beyond the corpus, and provide no stock picks or investment advice
 - [x] PydanticAI agent with typed dependencies in `app/assistant/deps.py` — request identity, retriever, grounding validator, and a per-run evidence ledger
 - [x] Typed agent output in `app/assistant/outputs.py` — `GroundedAnswer`, `Citation`, `SourcePassage`
-- [x] `app/assistant/agent.py` — bounded tools: `search_filings`, `read_chunk`, `read_surrounding_chunks`
+- [x] `app/assistant/tools.py` — bounded tools: `search_filings`, `read_chunks`, `read_chunk`, `read_surrounding_chunks`
 - [x] `app/chat/orchestrator.py` — one turn: trusted history → agent → validate → prepared stream result
 - [x] `app/grounding/validator.py` — every citation maps to a passage retrieved during the current run; fail closed on any violation
 - [x] `app/chat/streaming.py` — AI SDK-compatible validated text and `data-citation` parts, then persist

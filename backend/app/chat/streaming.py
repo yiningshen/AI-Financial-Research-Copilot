@@ -38,6 +38,18 @@ async def stream_grounded_reply(
     yield _event({"type": "text-delta", "id": text_id, "delta": turn.answer.answer})
     yield _event({"type": "text-end", "id": text_id})
 
+    chart_part = (
+        {
+            "type": "data-chart",
+            "id": "answer-chart",
+            "data": turn.answer.chart.model_dump(mode="json"),
+        }
+        if turn.answer.chart is not None
+        else None
+    )
+    if chart_part is not None:
+        yield _event(chart_part)
+
     citation_parts = [
         {
             "type": "data-citation",
@@ -52,6 +64,7 @@ async def stream_grounded_reply(
     assistant_parts = [
         status_part,
         {"type": "text", "text": turn.answer.answer},
+        *([chart_part] if chart_part is not None else []),
         *citation_parts,
     ]
     try:

@@ -1,5 +1,6 @@
 """Chat thread and streaming API routes."""
 
+import logging
 from datetime import date, datetime
 from typing import Annotated, Any
 from uuid import UUID
@@ -23,6 +24,7 @@ from app.database.chats import (
 from app.grounding.validator import GroundingError
 
 router = APIRouter(prefix="/chat", tags=["chat"])
+logger = logging.getLogger(__name__)
 
 
 class CreateThreadRequest(BaseModel):
@@ -157,16 +159,19 @@ async def stream_chat(
             question=request.final_user_message.text(),
         )
     except GroundingError as exc:
+        logger.exception("Grounding validation failed while preparing chat turn")
         raise _assistant_error(
             "grounding_failed",
             "The response could not be verified against the retrieved filings",
         ) from exc
     except (APIError, httpx.HTTPError) as exc:
+        logger.exception("Retrieval failed while preparing chat turn")
         raise _assistant_error(
             "retrieval_failed",
             "Filing retrieval is temporarily unavailable",
         ) from exc
     except (AgentRunError, OpenAIError) as exc:
+        logger.exception("Assistant failed while preparing chat turn")
         raise _assistant_error(
             "assistant_failed",
             "Unable to generate a grounded response",

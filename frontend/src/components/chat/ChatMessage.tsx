@@ -1,8 +1,10 @@
 import type { ReactNode } from "react"
 import { FileTextIcon, SparklesIcon } from "lucide-react"
 
+import { AnswerChart } from "@/components/chat/AnswerChart"
 import {
   messageAnswerStatus,
+  messageChart,
   messageCitations,
   type CitationSource,
   type DocumentUIMessage,
@@ -86,6 +88,7 @@ export function ChatMessage({
   const isUser = message.role === "user"
   const citations = messageCitations(message)
   const answerStatus = messageAnswerStatus(message)
+  const chart = messageChart(message)
 
   return (
     <article className={isUser ? "ml-auto max-w-2xl" : "w-full"}>
@@ -105,6 +108,13 @@ export function ChatMessage({
             <div className="whitespace-pre-wrap text-sm leading-7 text-foreground">
               {renderCitedText(text, citations, onCitationSelect)}
             </div>
+            {chart ? (
+              <AnswerChart
+                chart={chart}
+                citations={citations}
+                onCitationSelect={onCitationSelect}
+              />
+            ) : null}
           </div>
         </div>
       )}

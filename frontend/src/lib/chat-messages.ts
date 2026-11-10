@@ -20,9 +20,28 @@ export type CitationSource = {
   section: string | null
 }
 
+export type ChartPoint = {
+  label: string
+  value: number
+  citation_position: number
+}
+
+export type ChartSeries = {
+  label: string
+  points: ChartPoint[]
+}
+
+export type AnswerChart = {
+  type: "bar"
+  title: string
+  unit: string
+  series: ChartSeries[]
+}
+
 export type DocumentMessageData = {
   citation: CitationSource
   "answer-status": { status: AnswerStatus }
+  chart: AnswerChart
 }
 
 export type DocumentUIMessage = UIMessage<never, DocumentMessageData>
@@ -63,6 +82,38 @@ function isAnswerStatus(value: unknown): value is AnswerStatus {
     value === "answered" ||
     value === "insufficient_evidence" ||
     value === "refused"
+  )
+}
+
+function isChartPoint(value: unknown): value is ChartPoint {
+  return (
+    isRecord(value) &&
+    typeof value.label === "string" &&
+    typeof value.value === "number" &&
+    Number.isFinite(value.value) &&
+    typeof value.citation_position === "number"
+  )
+}
+
+function isChartSeries(value: unknown): value is ChartSeries {
+  return (
+    isRecord(value) &&
+    typeof value.label === "string" &&
+    Array.isArray(value.points) &&
+    value.points.length > 0 &&
+    value.points.every(isChartPoint)
+  )
+}
+
+function isAnswerChart(value: unknown): value is AnswerChart {
+  return (
+    isRecord(value) &&
+    value.type === "bar" &&
+    typeof value.title === "string" &&
+    typeof value.unit === "string" &&
+    Array.isArray(value.series) &&
+    value.series.length > 0 &&
+    value.series.every(isChartSeries)
   )
 }
 
@@ -112,6 +163,12 @@ export function toDocumentUiMessage(message: ChatMessage): DocumentUIMessage {
           id: typeof part.id === "string" ? part.id : undefined,
           data: { status: part.data.status },
         })
+      } else if (part.type === "data-chart" && isAnswerChart(part.data)) {
+        parts.push({
+          type: "data-chart",
+          id: typeof part.id === "string" ? part.id : undefined,
+          data: part.data,
+        })
       }
     }
   }
@@ -151,4 +208,9 @@ export function messageAnswerStatus(
     (candidate) => candidate.type === "data-answer-status",
   )
   return part?.data.status ?? null
+}
+
+export function messageChart(message: DocumentUIMessage): AnswerChart | null {
+  const part = message.parts.find((candidate) => candidate.type === "data-chart")
+  return part?.data ?? null
 }

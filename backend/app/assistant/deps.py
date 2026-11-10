@@ -1,11 +1,42 @@
-"""Request-scoped dependencies and evidence collected by assistant tools."""
+"""Request-scoped dependencies and the evidence collected by assistant tools."""
 
+from __future__ import annotations
+
+from collections.abc import Mapping, Sequence
 from dataclasses import dataclass, field
+from types import MappingProxyType
+from typing import TYPE_CHECKING, TypeVar
 from uuid import UUID
 
-from app.grounding.validator import GroundingValidator
 from app.retrieval.models import RetrievedPassage
 from app.retrieval.retriever import DocumentRetriever
+
+if TYPE_CHECKING:
+    from app.grounding.validator import GroundingValidator
+
+PassageCollection = TypeVar("PassageCollection", bound=Sequence[RetrievedPassage])
+
+
+@dataclass(slots=True)
+class TurnRegistry:
+    """Evidence made available by retrieval tools during one agent turn."""
+
+    _passages: dict[UUID, RetrievedPassage] = field(default_factory=dict)
+
+    @property
+    def passages(self) -> Mapping[UUID, RetrievedPassage]:
+        return MappingProxyType(self._passages)
+
+    def register(self, passages: PassageCollection) -> PassageCollection:
+        for passage in passages:
+            self._passages[passage.chunk_id] = passage
+        return passages
+
+    def require(self, chunk_id: UUID) -> None:
+        if chunk_id not in self._passages:
+            raise ValueError(
+                "A chunk must be discovered by search_filings before it can be read"
+            )
 
 
 @dataclass(slots=True)
@@ -14,15 +45,4 @@ class DocumentAgentDeps:
     thread_id: UUID
     retriever: DocumentRetriever
     grounding_validator: GroundingValidator
-    retrieved_passages: dict[UUID, RetrievedPassage] = field(default_factory=dict)
-
-    def remember(self, passages: list[RetrievedPassage]) -> list[RetrievedPassage]:
-        for passage in passages:
-            self.retrieved_passages[passage.chunk_id] = passage
-        return passages
-
-    def require_retrieved(self, chunk_id: UUID) -> None:
-        if chunk_id not in self.retrieved_passages:
-            raise ValueError(
-                "A chunk must be discovered by search_filings before it can be read"
-            )
+    registry: TurnRegistry = field(default_factory=TurnRegistry)

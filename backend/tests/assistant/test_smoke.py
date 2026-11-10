@@ -5,7 +5,7 @@ import pytest
 from openai import AsyncOpenAI
 from pydantic_ai.usage import UsageLimits
 
-from app.assistant.agent import document_agent
+from app.assistant.agent import run_document_agent
 from app.assistant.deps import DocumentAgentDeps
 from app.config import settings
 from app.database.supabase import create_service_role_client
@@ -31,16 +31,14 @@ def test_document_agent_returns_a_grounded_apple_answer():
                 ),
                 grounding_validator=validator,
             )
-            result = await document_agent.run(
+            result = await run_document_agent(
                 "According to Apple's 2025 10-K, did Services net sales "
                 "increase or decrease from 2024?",
                 deps=deps,
                 usage_limits=UsageLimits(request_limit=8, tool_calls_limit=6),
             )
-
-        sources = validator.validate(result.output, deps.retrieved_passages)
-        assert result.output.status == "answered"
-        assert sources
-        assert all(source.ticker == "AAPL" for source in sources)
+        assert result.answer.status == "answered"
+        assert result.sources
+        assert all(source.ticker == "AAPL" for source in result.sources)
 
     asyncio.run(run_smoke_test())

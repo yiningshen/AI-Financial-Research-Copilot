@@ -127,6 +127,16 @@ class DocumentRetriever:
         passages = _passages_from_windows(rows, {})
         return passages[0] if passages else None
 
+    async def read_chunks(
+        self, chunk_ids: Sequence[UUID]
+    ) -> list[RetrievedPassage]:
+        if not chunk_ids:
+            return []
+        rows = await fetch_chunk_windows(
+            self._database_client, list(dict.fromkeys(chunk_ids)), radius=0
+        )
+        return _passages_from_windows(rows, {})
+
     async def read_surrounding_chunks(
         self, chunk_id: UUID, *, radius: int = settings.retrieval_neighbor_radius
     ) -> list[RetrievedPassage]:

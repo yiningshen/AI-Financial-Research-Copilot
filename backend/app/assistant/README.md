@@ -15,7 +15,7 @@ flowchart TD
     D --> E[Retrieved passages]
     E --> F[Request evidence ledger]
     F --> B
-    B --> G[Optional read_chunk or read_surrounding_chunks]
+    B --> G[Optional read_chunks, read_chunk, or read_surrounding_chunks]
     G --> F
     B --> H[Prompted JSON output]
     H --> I[Pydantic GroundedAnswer validation]
@@ -26,9 +26,10 @@ flowchart TD
 ```
 
 The chat orchestrator creates fresh `DocumentAgentDeps` for every request and
-passes the user's question plus history loaded from Supabase to `document_agent`.
-The agent searches the corpus, returns typed JSON, and runs the grounding
-validator before the orchestrator can stream or persist the answer.
+passes the user's question plus history loaded from Supabase to
+`run_document_agent`. The agent searches the corpus, returns typed JSON, and
+runs the grounding validator before the orchestrator can stream or persist the
+answer.
 
 Validated streams include a typed answer-status part and one rich citation data
 part per source. Citation parts contain trusted filing metadata and the exact
@@ -59,11 +60,11 @@ the orchestrator's configured model-request and tool-call limits.
 - `user_id` and `thread_id` for request identity
 - A configured `DocumentRetriever`
 - A `GroundingValidator`
-- `retrieved_passages`, the evidence ledger for this run
+- `registry`, the `TurnRegistry` evidence ledger for this run
 
-`remember()` adds tool results to the ledger by chunk ID. `require_retrieved()`
-prevents follow-up tools from reading arbitrary or guessed chunk IDs. Nothing in
-the ledger is shared between users, threads, or agent runs.
+Every tool registers its response with `TurnRegistry`. `require()` prevents
+follow-up tools from reading arbitrary or guessed chunk IDs. Nothing in the
+registry is shared between users, threads, or agent runs.
 
 ## Tools
 
@@ -85,6 +86,12 @@ Rereads one chunk without neighboring context. The chunk must already exist in
 the evidence ledger. A missing or unauthorized chunk causes `ModelRetry` instead
 of exposing an unrestricted corpus lookup.
 
+### `read_chunks`
+
+Bulk-reads previously discovered chunks without neighboring context. Every ID
+must already exist in the turn registry, and the request is bounded by the same
+hard retrieval ceiling as search.
+
 ### `read_surrounding_chunks`
 
 Fetches a bounded context window around a previously discovered chunk. Newly
@@ -99,6 +106,7 @@ returned neighbors are added to the ledger and may then be cited.
 - `status`: `answered`, `insufficient_evidence`, or `refused`
 - `answer`: the user-facing text
 - `citations`: model-selected chunk IDs and exact supporting quotes
+- `chart`: an optional grouped bar chart whose points reference citation positions
 
 `Citation` contains only the model's evidence claim: position, chunk ID, and
 quoted text. The model does not supply trusted filing metadata.
@@ -120,7 +128,13 @@ Instructions guide model behavior, but they are not the security boundary.
 - Every answer paragraph or bullet has a citation.
 - Every cited chunk was retrieved during this run.
 - Every quoted excerpt occurs in the cited passage.
+- Every plotted value appears in the verbatim quote for its referenced citation.
 - Refusal and insufficient-evidence responses contain no citations.
+
+When the model attaches a verbatim quote to the wrong neighboring chunk, the
+validator may resolve it to a different passage only if that quote has one exact,
+unique match in the same turn registry. Missing or ambiguous quotes still fail
+closed.
 
 An invalid result raises `ModelRetry`. If the model cannot correct the output
 within its retry budget, the request fails closed and no answer is streamed or
@@ -147,8 +161,9 @@ requests, and verifies that the resulting Apple answer has validated sources.
 
 ## Files
 
-- `agent.py`: model, tools, and output-validation retry hook
-- `deps.py`: request dependencies and evidence ledger
+- `agent.py`: model, run entry point, and output-validation retry hook
+- `tools.py`: the four bounded retrieval tools
+- `deps.py`: request dependencies and `TurnRegistry`
 - `outputs.py`: typed answer, citation, and trusted source models
 - `instructions.md`: corpus, citation, uncertainty, and refusal rules
 - `../grounding/validator.py`: deterministic grounding enforcement
