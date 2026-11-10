@@ -211,6 +211,13 @@ and grounding validation:
 uv run pytest -s -m integration tests/assistant/test_smoke.py -v
 ```
 
+Measure retrieval quality, citation correctness, grounding, and refusal
+behavior against the fixed evaluation set (see `evals/README.md`):
+
+```bash
+uv run python -m evals.run
+```
+
 Both integration tests load `backend/.env`, make live network requests, and may
 incur small provider charges. From Jupyter, select `backend/.venv` as the kernel,
 change to the backend directory, and execute the same commands with `!`.

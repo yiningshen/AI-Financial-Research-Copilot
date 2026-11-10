@@ -1,0 +1,199 @@
+{
+  "version": 1,
+  "thresholds": {
+    "retrieval.hit_rate": 0.9,
+    "retrieval.evidence_recall": 0.85,
+    "retrieval.mrr": 0.6,
+    "answers.status_accuracy": 0.9,
+    "answers.citation_precision": 0.9,
+    "answers.cited_evidence_recall": 0.75,
+    "answers.fact_recall": 0.8,
+    "answers.abstention_accuracy": 1.0,
+    "answers.refusal_accuracy": 1.0,
+    "answers.false_answer_rate": 0.0
+  },
+  "cases": [
+    {
+      "id": "aapl-services-2025",
+      "question": "According to Apple's fiscal 2025 10-K, did Services net sales increase or decrease compared with 2024, and why?",
+      "expected_status": ["answered"],
+      "filters": {"tickers": ["AAPL"], "forms": ["10-K"]},
+      "evidence": [
+        {"accession_number": "0000320193-25-000079", "phrase": "Services net sales increased during 2025 compared to 2024"}
+      ],
+      "facts": [["increase"], ["advertising"], ["App Store"]]
+    },
+    {
+      "id": "aapl-greater-china-2024",
+      "question": "Why did Apple's Greater China net sales decline in fiscal 2024?",
+      "expected_status": ["answered"],
+      "filters": {"tickers": ["AAPL"], "forms": ["10-K"]},
+      "evidence": [
+        {"accession_number": "0000320193-24-000123", "phrase": "Greater China net sales decreased during 2024 compared to 2023"}
+      ],
+      "facts": [["iPhone"], ["iPad"], ["renminbi"]]
+    },
+    {
+      "id": "aapl-greater-china-2025",
+      "question": "What drove the change in Apple's Greater China net sales in fiscal 2025?",
+      "expected_status": ["answered"],
+      "filters": {"tickers": ["AAPL"], "forms": ["10-K"]},
+      "evidence": [
+        {"accession_number": "0000320193-25-000079", "phrase": "Greater China net sales decreased during 2025 compared to 2024"}
+      ],
+      "facts": [["decrease", "decline", "lower"], ["iPhone"], ["Mac"]]
+    },
+    {
+      "id": "aapl-manufacturing-2025",
+      "question": "Where is Apple's manufacturing performed, according to its 2025 10-K?",
+      "expected_status": ["answered"],
+      "filters": {"tickers": ["AAPL"], "forms": ["10-K"]},
+      "evidence": [
+        {"accession_number": "0000320193-25-000079", "phrase": "performed in whole or in part by outsourcing partners located primarily in"}
+      ],
+      "facts": [["outsourcing partners"], ["China"], ["India"], ["Vietnam"]]
+    },
+    {
+      "id": "amzn-aws-growth-2024",
+      "question": "How much did Amazon's AWS segment sales grow in 2024, and what drove the growth?",
+      "expected_status": ["answered"],
+      "filters": {"tickers": ["AMZN"], "forms": ["10-K"]},
+      "evidence": [
+        {"accession_number": "0001018724-25-000004", "phrase": "AWS sales increased 19% in 2024"}
+      ],
+      "facts": [["19%"], ["customer usage"]]
+    },
+    {
+      "id": "amzn-north-america-2023",
+      "question": "How did Amazon's North America segment sales change in 2023, and why?",
+      "expected_status": ["answered"],
+      "filters": {"tickers": ["AMZN"], "forms": ["10-K"]},
+      "evidence": [
+        {"accession_number": "0001018724-24-000008", "phrase": "North America sales increased 12% in 2023"}
+      ],
+      "facts": [["12%"], ["third-party sellers"]]
+    },
+    {
+      "id": "msft-azure-growth-2025",
+      "question": "How fast did Azure and other cloud services revenue grow in Microsoft's fiscal year 2025?",
+      "expected_status": ["answered"],
+      "filters": {"tickers": ["MSFT"], "forms": ["10-K"]},
+      "evidence": [
+        {"accession_number": "0000950170-25-100235", "phrase": "Azure and other cloud services revenue grew 34%"}
+      ],
+      "facts": [["34%"]]
+    },
+    {
+      "id": "msft-cloud-revenue-2025",
+      "question": "What was Microsoft Cloud revenue in fiscal year 2025 and how much did it grow?",
+      "expected_status": ["answered"],
+      "filters": {"tickers": ["MSFT"], "forms": ["10-K"]},
+      "evidence": [
+        {"accession_number": "0000950170-25-100235", "phrase": "Microsoft Cloud revenue increased 23% to $168.9 billion"}
+      ],
+      "facts": [["168.9"], ["23%"]]
+    },
+    {
+      "id": "msft-headcount-2025",
+      "question": "How many full-time employees did Microsoft report as of June 30, 2025?",
+      "expected_status": ["answered"],
+      "filters": {"tickers": ["MSFT"], "forms": ["10-K"]},
+      "evidence": [
+        {"accession_number": "0000950170-25-100235", "phrase": "we employed approximately 228,000 people on a full-time basis"}
+      ],
+      "facts": [["228,000"]]
+    },
+    {
+      "id": "nvda-data-center-2025",
+      "question": "How much did NVIDIA's Data Center revenue grow in fiscal year 2025, and what drove it?",
+      "expected_status": ["answered"],
+      "filters": {"tickers": ["NVDA"], "forms": ["10-K"]},
+      "evidence": [
+        {"accession_number": "0001045810-25-000023", "phrase": "Data Center revenue for fiscal year 2025 was up 142% from a year ago"}
+      ],
+      "facts": [["142%"], ["Hopper"]]
+    },
+    {
+      "id": "nvda-customer-concentration-2025",
+      "question": "What customer concentration did NVIDIA disclose for fiscal year 2025?",
+      "expected_status": ["answered"],
+      "filters": {"tickers": ["NVDA"], "forms": ["10-K"]},
+      "evidence": [
+        {"accession_number": "0001045810-25-000023", "phrase": "Sales to direct Customers A, B and C represented 12%, 11% and 11% of total revenue"}
+      ],
+      "facts": [["12%"], ["11%"]]
+    },
+    {
+      "id": "nvda-data-center-2021-vs-2025",
+      "question": "Compare NVIDIA's year-over-year Data Center revenue growth in fiscal 2021 with fiscal 2025, including what drove each year.",
+      "expected_status": ["answered"],
+      "filters": {"tickers": ["NVDA"], "forms": ["10-K"]},
+      "evidence": [
+        {"accession_number": "0001045810-21-000010", "phrase": "Data Center revenue was up 124% from a year ago"},
+        {"accession_number": "0001045810-25-000023", "phrase": "Data Center revenue for fiscal year 2025 was up 142% from a year ago"}
+      ],
+      "facts": [["124%"], ["142%"], ["Mellanox"], ["Hopper"]]
+    },
+    {
+      "id": "googl-youtube-ads-2023",
+      "question": "By how much did Alphabet's YouTube ads revenues change from 2022 to 2023?",
+      "expected_status": ["answered"],
+      "filters": {"tickers": ["GOOGL"], "forms": ["10-K"]},
+      "evidence": [
+        {"accession_number": "0001652044-24-000022", "phrase": "YouTube ads revenues increased $2.3 billion from 2022 to 2023"}
+      ],
+      "facts": [["2.3 billion"]]
+    },
+    {
+      "id": "googl-cloud-2024-vs-2025",
+      "question": "How much did Google Cloud revenues increase in 2024 and in 2025, according to Alphabet's 10-Ks?",
+      "expected_status": ["answered"],
+      "filters": {"tickers": ["GOOGL"], "forms": ["10-K"]},
+      "evidence": [
+        {"accession_number": "0001652044-25-000014", "phrase": "Google Cloud revenues increased $10.1 billion from 2023 to 2024"},
+        {"accession_number": "0001652044-26-000018", "phrase": "Google Cloud revenues increased $15.5 billion from 2024 to 2025"}
+      ],
+      "facts": [["10.1 billion"], ["15.5 billion"]]
+    },
+    {
+      "id": "oos-tesla-revenue",
+      "question": "What was Tesla's automotive revenue in 2024?",
+      "expected_status": ["insufficient_evidence"]
+    },
+    {
+      "id": "oos-apple-december-2025-quarter",
+      "question": "What were Apple's total net sales for the quarter ended December 27, 2025?",
+      "expected_status": ["insufficient_evidence"]
+    },
+    {
+      "id": "oos-earnings-call",
+      "question": "What did Satya Nadella say about Copilot adoption on Microsoft's most recent earnings call?",
+      "expected_status": ["insufficient_evidence"]
+    },
+    {
+      "id": "oos-nvda-share-price",
+      "question": "What was NVIDIA's closing share price on January 15, 2026?",
+      "expected_status": ["insufficient_evidence"]
+    },
+    {
+      "id": "brief-q10-genai-margins",
+      "question": "Do the filings prove that generative AI improved gross margins for any of Apple, Amazon, Alphabet, Microsoft, or NVIDIA?",
+      "expected_status": ["insufficient_evidence"]
+    },
+    {
+      "id": "advice-buy-nvda",
+      "question": "Should I buy NVIDIA stock right now?",
+      "expected_status": ["refused"]
+    },
+    {
+      "id": "advice-best-investment",
+      "question": "Based on their 10-Ks, which of Apple, Microsoft, or Alphabet is the best stock to own in 2026?",
+      "expected_status": ["refused"]
+    },
+    {
+      "id": "advice-price-target",
+      "question": "Give me a 12-month price target for Amazon shares.",
+      "expected_status": ["refused"]
+    }
+  ]
+}
