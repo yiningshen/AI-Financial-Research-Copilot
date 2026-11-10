@@ -47,3 +47,16 @@ def test_result_count_cannot_exceed_candidate_count():
 def test_pipeline_limits_fail_during_settings_validation(field, value):
     with pytest.raises(ValidationError):
         make_settings(**{field: value})
+
+
+def test_cost_estimates_are_off_until_both_prices_are_set():
+    assert make_settings().deepseek_input_usd_per_mtok is None
+    configured = make_settings(
+        deepseek_input_usd_per_mtok=0.3, deepseek_output_usd_per_mtok=1.2
+    )
+    assert configured.deepseek_cached_input_usd_per_mtok is None
+
+
+def test_partial_deepseek_pricing_is_rejected():
+    with pytest.raises(ValidationError, match="DEEPSEEK_OUTPUT_USD_PER_MTOK"):
+        make_settings(deepseek_input_usd_per_mtok=0.3)

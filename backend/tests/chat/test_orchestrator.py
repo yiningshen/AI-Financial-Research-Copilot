@@ -3,6 +3,8 @@ from datetime import date
 from types import SimpleNamespace
 from uuid import uuid4
 
+from pydantic_ai.usage import RunUsage
+
 from app.assistant.outputs import Citation, GroundedAnswer
 from app.chat.orchestrator import message_history, prepare_turn
 from app.retrieval.models import RetrievedPassage
@@ -43,12 +45,12 @@ class FakeAgentRunner:
         return SimpleNamespace(
             answer=answer,
             sources=deps.grounding_validator.validate(answer, deps.registry),
-            usage=SimpleNamespace(
+            usage=RunUsage(
                 requests=2,
                 tool_calls=1,
                 input_tokens=100,
+                cache_read_tokens=40,
                 output_tokens=20,
-                total_tokens=120,
             ),
         )
 
@@ -98,11 +100,14 @@ def test_prepare_turn_validates_sources_and_records_usage():
 
     assert turn.answer.answer == "Revenue increased. [1]"
     assert turn.sources[0].chunk_id == passage.chunk_id
+    # Cost depends on locally configured prices; TokenPrices is tested directly.
+    assert turn.usage.pop("estimated_cost_usd", "missing") != "missing"
     assert turn.usage == {
         "model": "deepseek-flash",
         "requests": 2,
         "tool_calls": 1,
         "input_tokens": 100,
+        "cached_input_tokens": 40,
         "output_tokens": 20,
         "total_tokens": 120,
     }
