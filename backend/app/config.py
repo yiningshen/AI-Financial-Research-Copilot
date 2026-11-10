@@ -54,6 +54,20 @@ class Settings(BaseSettings):
     deepseek_api_key: str
     deepseek_base_url: str = "https://api.deepseek.com"
     deepseek_chat_model: str = "deepseek-flash"
+    # USD per million tokens, copied from DeepSeek's pricing page. genai-prices has
+    # no entry for this model, so cost estimates stay unset (None) until both the
+    # input and output prices are configured. Cached input defaults to input price.
+    deepseek_input_usd_per_mtok: float | None = Field(default=None, ge=0)
+    deepseek_cached_input_usd_per_mtok: float | None = Field(default=None, ge=0)
+    deepseek_output_usd_per_mtok: float | None = Field(default=None, ge=0)
+
+    # --- Observability (Pydantic Logfire) ---
+    # Without a token, spans are created locally but not exported.
+    logfire_token: str | None = None
+    logfire_environment: str = "local"
+    # Prompts, tool arguments, and retrieved filing text on agent spans. Needed to
+    # diagnose wrong answers; disable if traces must not hold analyst questions.
+    logfire_include_content: bool = True
 
     # --- Retrieval ---
     retrieval_candidate_count: int = Field(
@@ -86,6 +100,23 @@ class Settings(BaseSettings):
             raise ValueError(
                 "RETRIEVAL_RESULT_COUNT must not exceed "
                 "RETRIEVAL_CANDIDATE_COUNT"
+            )
+        return self
+
+    @model_validator(mode="after")
+    def _validate_deepseek_prices(self) -> Self:
+        prices = (
+            self.deepseek_input_usd_per_mtok,
+            self.deepseek_cached_input_usd_per_mtok,
+            self.deepseek_output_usd_per_mtok,
+        )
+        if any(price is not None for price in prices) and (
+            self.deepseek_input_usd_per_mtok is None
+            or self.deepseek_output_usd_per_mtok is None
+        ):
+            raise ValueError(
+                "Set both DEEPSEEK_INPUT_USD_PER_MTOK and "
+                "DEEPSEEK_OUTPUT_USD_PER_MTOK to enable cost estimates"
             )
         return self
 

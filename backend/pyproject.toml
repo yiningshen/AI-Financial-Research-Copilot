@@ -6,6 +6,7 @@ dependencies = [
     "alembic==1.20.0",
     "fastapi==0.141.1",
     "httpx==0.28.1",
+    "logfire==5.1.0",
     "openai==3.13.0",
     "pgvector==0.5.0",
     "psycopg[binary]==3.3.5",
@@ -47,3 +48,8 @@ dev = [
     "ruff==0.16.7",
     "tiktoken==0.12.0",
 ]
+
+[tool.logfire]
+# Tests and one-off scripts import instrumented modules without configuring
+# Logfire; their spans are intentionally dropped.
+ignore_no_config = true

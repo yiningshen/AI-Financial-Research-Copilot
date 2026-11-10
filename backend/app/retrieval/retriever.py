@@ -7,6 +7,7 @@ import math
 from collections.abc import Sequence
 from uuid import UUID
 
+import logfire
 from openai import AsyncOpenAI
 from supabase import AsyncClient
 
@@ -68,6 +69,26 @@ class DocumentRetriever:
         limit: int = settings.retrieval_result_count,
     ) -> list[RetrievedPassage]:
         """Return fused seed chunks plus their deduplicated neighboring context."""
+        attributes: dict[str, object] = {"filters": filters, "limit": limit}
+        if settings.logfire_include_content:
+            attributes["query"] = query
+        with logfire.span("retrieval.search", **attributes) as span:
+            passages = await self._search(query, filters=filters, limit=limit)
+            span.set_attributes(
+                {
+                    "passages": len(passages),
+                    "seeds": sum(passage.is_seed for passage in passages),
+                }
+            )
+        return passages
+
+    async def _search(
+        self,
+        query: str,
+        *,
+        filters: RetrievalFilters | None,
+        limit: int,
+    ) -> list[RetrievedPassage]:
         normalized_query = query.strip()
         if not normalized_query:
             raise ValueError("Search query must not be empty")
@@ -146,12 +167,16 @@ class DocumentRetriever:
         return _passages_from_windows(rows, {})
 
     async def _embed_query(self, query: str) -> list[float]:
-        response = await self._embedding_client.embeddings.create(
-            input=[query],
-            model=self._embedding_model,
-            dimensions=self._embedding_dimensions,
-            encoding_format="float",
-        )
+        with logfire.span(
+            "openai embedding {model}", model=self._embedding_model
+        ) as span:
+            response = await self._embedding_client.embeddings.create(
+                input=[query],
+                model=self._embedding_model,
+                dimensions=self._embedding_dimensions,
+                encoding_format="float",
+            )
+            span.set_attribute("input_tokens", response.usage.total_tokens)
         if len(response.data) != 1 or response.data[0].index != 0:
             raise ValueError("Embedding response does not match the query")
         embedding = response.data[0].embedding

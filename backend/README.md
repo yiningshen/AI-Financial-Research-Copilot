@@ -55,6 +55,48 @@ values fail during startup.
 The hybrid search stages, concurrency model, live smoke test, and grounding
 contract are documented in [app/retrieval/README.md](app/retrieval/README.md).
 
+## Observability
+
+`app/observability.py` configures [Pydantic Logfire](https://logfire.pydantic.dev)
+(OpenTelemetry) at API startup and in the eval runner. Every chat turn is one
+trace:
+
+```text
+chat turn                           thread, answer status, tokens, estimated cost
+└─ agent run                        PydanticAI: messages and final output
+   ├─ chat deepseek-flash           one per model request: latency, tokens
+   ├─ running tool: search_filings  tool arguments and result
+   │  └─ retrieval.search           filters, passages, seeds
+   │     ├─ openai embedding …      latency, input tokens
+   │     ├─ supabase rpc …_full_text / …_semantic    latency, rows (concurrent)
+   │     └─ supabase rpc get_document_chunk_windows  latency, rows
+   └─ chat deepseek-flash           grounding retries show up as extra requests
+```
+
+Exceptions are recorded on the span that raised them, and `logger.exception`
+calls in the API land in the same trace.
+
+| Variable | Default | Purpose |
+| --- | --- | --- |
+| `LOGFIRE_TOKEN` | unset | Write token for a Logfire project. Without it, spans are created but not exported. |
+| `LOGFIRE_ENVIRONMENT` | `local` | Environment tag for filtering, e.g. `production`. |
+| `LOGFIRE_INCLUDE_CONTENT` | `true` | Put prompts, tool arguments, retrieved text, and search queries on spans. Diagnosing wrong answers needs this; set it to `false` if traces must not hold analyst questions. |
+| `DEEPSEEK_INPUT_USD_PER_MTOK`, `DEEPSEEK_OUTPUT_USD_PER_MTOK` | unset | Prices from DeepSeek's pricing page. Both are required to enable cost estimates. |
+| `DEEPSEEK_CACHED_INPUT_USD_PER_MTOK` | input price | Price for cache-hit input tokens. |
+
+The estimated cost covers DeepSeek generation only. Query embeddings cost a
+fraction of a cent per thousand searches; their token counts are recorded on
+the embedding spans. Each persisted assistant message's `usage` JSON also stores
+token counts and `estimated_cost_usd`, so cost is queryable without Logfire.
+
+Useful Logfire queries:
+
+- Slow turns: `span_name = 'chat turn'`, sorted by duration, then open the
+  trace to see whether time went to model requests, retries, or Supabase RPCs.
+- Expensive turns: `attributes->>'usage.estimated_cost_usd'` on `chat turn`.
+- Grounding retries: `chat turn` spans where `usage.requests` is above the
+  usual two (one tool round plus the final answer).
+
 ## Troubleshooting
 
 **`ModuleNotFoundError: No module named 'fastapi'` (or `'app'`)** — you ran the wrong Python. Dependencies live only in `backend/.venv`, so any other interpreter fails. Prefix commands with `uv run`, or point your editor at:

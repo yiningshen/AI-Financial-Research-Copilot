@@ -7,6 +7,7 @@ from dataclasses import dataclass
 from typing import Any
 from uuid import UUID
 
+import logfire
 from openai import AsyncOpenAI
 from pydantic_ai.messages import (
     ModelMessage,
@@ -23,6 +24,7 @@ from app.assistant.outputs import GroundedAnswer, SourcePassage
 from app.config import settings
 from app.database.chats import ChatRepository
 from app.grounding.validator import GroundingValidator
+from app.observability import usage_summary
 from app.retrieval.retriever import DocumentRetriever
 
 DocumentAgentRunner = Callable[..., Awaitable[DocumentAgentRun]]
@@ -56,44 +58,50 @@ async def prepare_turn(
     question: str,
     run_agent: DocumentAgentRunner = run_document_agent,
 ) -> PreparedTurn:
-    stored_messages = await repository.get_messages(thread_id)
-    validator = GroundingValidator()
+    # One root span per turn ties the agent run, model requests, tool calls, and
+    # retrieval latency together; an exception raised here is recorded on it.
+    with logfire.span(
+        "chat turn", thread_id=str(thread_id), user_id=repository.user_id
+    ) as span:
+        stored_messages = await repository.get_messages(thread_id)
+        validator = GroundingValidator()
 
-    async with AsyncOpenAI(api_key=settings.openai_api_key) as embedding_client:
-        deps = DocumentAgentDeps(
-            user_id=repository.user_id,
-            thread_id=thread_id,
-            retriever=DocumentRetriever(
-                database_client=repository.service_client,
-                embedding_client=embedding_client,
-                embedding_model=settings.openai_embedding_model,
-                embedding_dimensions=settings.openai_embedding_dimensions,
-            ),
-            grounding_validator=validator,
-        )
-        result = await run_agent(
-            question,
-            deps=deps,
-            message_history=message_history(stored_messages),
-            usage_limits=UsageLimits(
-                request_limit=settings.agent_max_model_requests,
-                tool_calls_limit=settings.agent_max_tool_calls,
-            ),
-        )
+        async with AsyncOpenAI(api_key=settings.openai_api_key) as embedding_client:
+            deps = DocumentAgentDeps(
+                user_id=repository.user_id,
+                thread_id=thread_id,
+                retriever=DocumentRetriever(
+                    database_client=repository.service_client,
+                    embedding_client=embedding_client,
+                    embedding_model=settings.openai_embedding_model,
+                    embedding_dimensions=settings.openai_embedding_dimensions,
+                ),
+                grounding_validator=validator,
+            )
+            result = await run_agent(
+                question,
+                deps=deps,
+                message_history=message_history(stored_messages),
+                usage_limits=UsageLimits(
+                    request_limit=settings.agent_max_model_requests,
+                    tool_calls_limit=settings.agent_max_tool_calls,
+                ),
+            )
 
-    usage = result.usage
-    return PreparedTurn(
-        answer=result.answer,
-        sources=result.sources,
-        usage={
-            "model": settings.deepseek_chat_model,
-            "requests": usage.requests,
-            "tool_calls": usage.tool_calls,
-            "input_tokens": usage.input_tokens,
-            "output_tokens": usage.output_tokens,
-            "total_tokens": usage.total_tokens,
-        },
-    )
+        usage = usage_summary(result.usage)
+        span.set_attributes(
+            {
+                "answer_status": result.answer.status,
+                "source_count": len(result.sources),
+                "evidence_passages": len(deps.registry.passages),
+                **{
+                    f"usage.{key}": value
+                    for key, value in usage.items()
+                    if value is not None
+                },
+            }
+        )
+    return PreparedTurn(answer=result.answer, sources=result.sources, usage=usage)
 
 
 TurnPreparer = Callable[..., Awaitable[PreparedTurn]]

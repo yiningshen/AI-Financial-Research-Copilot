@@ -12,7 +12,7 @@ from collections.abc import Mapping, Sequence
 from dataclasses import dataclass, replace
 from pathlib import Path
 from statistics import fmean
-from typing import Literal
+from typing import Any, Literal
 from uuid import UUID
 
 from pydantic import BaseModel, ConfigDict, Field, model_validator
@@ -23,7 +23,15 @@ from app.retrieval.models import RetrievalFilters, RetrievedPassage
 OutcomeStatus = AnswerStatus | Literal["error"]
 
 # Metrics where a smaller value is better; every other threshold is a floor.
-LOWER_IS_BETTER = frozenset({"answers.false_answer_rate"})
+LOWER_IS_BETTER = frozenset(
+    {
+        "answers.false_answer_rate",
+        "retrieval.latency_p95_s",
+        "agent.latency_p95_s",
+        "agent.mean_requests",
+        "agent.estimated_cost_usd",
+    }
+)
 
 _MARKER = re.compile(r"\[\d+]")
 _NUMBER = re.compile(r"\d[\d,]*(?:\.\d+)?")
@@ -282,6 +290,39 @@ def summarize(
         ),
         "answers.errors": sum(s.actual_status == "error" for s in answers),
     }
+
+
+def performance_summary(
+    retrieval_latencies: Sequence[float],
+    agent_latencies: Sequence[float],
+    agent_usage: Sequence[Mapping[str, Any]],
+) -> dict[str, float | int | None]:
+    """Latency percentiles, token totals, and cost for completed runs.
+
+    Cost is None when any run is unpriced, rather than an undercount.
+    """
+    costs = [usage["estimated_cost_usd"] for usage in agent_usage]
+    return {
+        "retrieval.latency_p50_s": percentile(retrieval_latencies, 50),
+        "retrieval.latency_p95_s": percentile(retrieval_latencies, 95),
+        "agent.latency_p50_s": percentile(agent_latencies, 50),
+        "agent.latency_p95_s": percentile(agent_latencies, 95),
+        "agent.mean_requests": _mean(usage["requests"] for usage in agent_usage),
+        "agent.mean_tool_calls": _mean(usage["tool_calls"] for usage in agent_usage),
+        "agent.total_tokens": sum(usage["total_tokens"] for usage in agent_usage),
+        "agent.estimated_cost_usd": round(sum(costs), 6)
+        if costs and None not in costs
+        else None,
+    }
+
+
+def percentile(values: Sequence[float], pct: float) -> float | None:
+    """Nearest-rank percentile; stable for the small samples an eval run has."""
+    if not values:
+        return None
+    ordered = sorted(values)
+    rank = max(1, -(-len(ordered) * pct // 100))
+    return round(ordered[int(rank) - 1], 3)
 
 
 def threshold_failures(

@@ -46,7 +46,8 @@ class EmbeddingClient:
     async def create(self, **kwargs):
         self.calls.append(kwargs)
         return SimpleNamespace(
-            data=[SimpleNamespace(index=0, embedding=[0.1, 0.2, 0.3])]
+            data=[SimpleNamespace(index=0, embedding=[0.1, 0.2, 0.3])],
+            usage=SimpleNamespace(total_tokens=5),
         )
 
 
@@ -148,7 +149,8 @@ def test_search_starts_lexical_lookup_while_embedding_is_in_flight():
         embeddings.calls.append(kwargs)
         await release_embedding.wait()
         return SimpleNamespace(
-            data=[SimpleNamespace(index=0, embedding=[0.1, 0.2, 0.3])]
+            data=[SimpleNamespace(index=0, embedding=[0.1, 0.2, 0.3])],
+            usage=SimpleNamespace(total_tokens=5),
         )
 
     embeddings.create = delayed_embedding
@@ -204,10 +206,30 @@ def test_search_validates_embedding_dimensions():
     embeddings = EmbeddingClient()
 
     async def wrong_dimensions(**kwargs):
-        return SimpleNamespace(data=[SimpleNamespace(index=0, embedding=[0.1])])
+        return SimpleNamespace(
+            data=[SimpleNamespace(index=0, embedding=[0.1])],
+            usage=SimpleNamespace(total_tokens=5),
+        )
 
     embeddings.create = wrong_dimensions
     retriever = make_retriever(embeddings=embeddings)
 
     with pytest.raises(ValueError, match="expected 3"):
         asyncio.run(retriever.search("revenue"))
+
+
+def test_search_traces_each_retrieval_stage(capfire):
+    asyncio.run(make_retriever().search("revenue growth", limit=2))
+
+    spans = {
+        span["attributes"]["logfire.msg"]: span["attributes"]
+        for span in capfire.exporter.exported_spans_as_dict()
+    }
+    assert spans["retrieval.search"]["passages"] == 3
+    assert spans["retrieval.search"]["seeds"] == 2
+    assert spans["openai embedding text-embedding-3-small"]["input_tokens"] == 5
+    assert spans["supabase rpc search_document_chunks_semantic"]["rows"] == 2
+    assert spans["supabase rpc search_document_chunks_full_text"]["rows"] == 2
+    assert spans["supabase rpc get_document_chunk_windows"]["rows"] == 4
+    # The query embedding is never copied onto a span.
+    assert all("p_query_embedding" not in attributes for attributes in spans.values())

@@ -12,6 +12,8 @@ from evals.metrics import (
     EvalSuite,
     EvidenceSpec,
     RetrievalScore,
+    percentile,
+    performance_summary,
     score_answer,
     score_retrieval,
     summarize,
@@ -299,3 +301,44 @@ class TestThresholds:
             "retrieval.mrr = 0.400 (must be >= 0.6)",
             "answers.false_answer_rate = 0.100 (must be <= 0.0)",
         ]
+
+
+class TestPerformance:
+    def test_percentile_uses_nearest_rank(self):
+        values = [5.0, 1.0, 3.0, 2.0, 4.0]
+        assert percentile(values, 50) == 3.0
+        assert percentile(values, 95) == 5.0
+        assert percentile([], 50) is None
+
+    def test_summary_totals_tokens_and_cost(self):
+        usage = [
+            {
+                "requests": 2,
+                "tool_calls": 1,
+                "total_tokens": 100,
+                "estimated_cost_usd": 0.001,
+            },
+            {
+                "requests": 4,
+                "tool_calls": 3,
+                "total_tokens": 300,
+                "estimated_cost_usd": 0.002,
+            },
+        ]
+        summary = performance_summary([0.4, 0.6], [3.0, 9.0], usage)
+        assert summary["retrieval.latency_p50_s"] == 0.4
+        assert summary["agent.latency_p95_s"] == 9.0
+        assert summary["agent.mean_requests"] == 3.0
+        assert summary["agent.total_tokens"] == 400
+        assert summary["agent.estimated_cost_usd"] == 0.003
+
+    def test_cost_is_none_if_any_run_is_unpriced(self):
+        usage = [
+            {
+                "requests": 1,
+                "tool_calls": 0,
+                "total_tokens": 1,
+                "estimated_cost_usd": None,
+            }
+        ]
+        assert performance_summary([], [1.0], usage)["agent.estimated_cost_usd"] is None

@@ -20,8 +20,11 @@ from collections.abc import Sequence
 from dataclasses import asdict
 from datetime import UTC, datetime
 from pathlib import Path
+from time import perf_counter
+from typing import Any
 from uuid import uuid4
 
+import logfire
 from openai import AsyncOpenAI
 from pydantic_ai.exceptions import AgentRunError
 from pydantic_ai.usage import UsageLimits
@@ -31,6 +34,7 @@ from app.assistant.deps import DocumentAgentDeps
 from app.config import settings
 from app.database.supabase import create_service_role_client
 from app.grounding.validator import GroundingError, GroundingValidator
+from app.observability import configure_observability, usage_summary
 from app.retrieval.retriever import DocumentRetriever
 from evals.metrics import (
     AgentOutcome,
@@ -38,6 +42,7 @@ from evals.metrics import (
     EvalCase,
     RetrievalScore,
     load_suite,
+    performance_summary,
     score_answer,
     score_retrieval,
     summarize,
@@ -51,54 +56,71 @@ REPORTS_DIR = EVALS_DIR / "reports"
 
 async def evaluate_retrieval(
     cases: Sequence[EvalCase], retriever: DocumentRetriever, limit: int
-) -> list[RetrievalScore]:
-    scores = []
+) -> tuple[list[RetrievalScore], list[float]]:
+    scores, latencies = [], []
     for case in cases:
+        started = perf_counter()
         passages = await retriever.search(
             case.question, filters=case.filters, limit=limit
         )
+        latencies.append(perf_counter() - started)
         score = score_retrieval(case, passages)
         print(
             f"  retrieval {case.id}: recall={score.recall:.2f} "
-            f"rank={score.first_relevant_rank}",
+            f"rank={score.first_relevant_rank} {latencies[-1]:.2f}s",
             flush=True,
         )
         scores.append(score)
-    return scores
+    return scores, latencies
 
 
-async def run_agent_case(case: EvalCase, retriever: DocumentRetriever) -> AgentOutcome:
+async def run_agent_case(
+    case: EvalCase, retriever: DocumentRetriever
+) -> tuple[AgentOutcome, dict[str, Any]]:
+    """Run one case in its own trace; return the outcome and its telemetry."""
     deps = DocumentAgentDeps(
         user_id="evals",
         thread_id=uuid4(),
         retriever=retriever,
         grounding_validator=GroundingValidator(),
     )
-    try:
-        result = await run_document_agent(
-            case.question,
-            deps=deps,
-            usage_limits=UsageLimits(
-                request_limit=settings.agent_max_model_requests,
-                tool_calls_limit=settings.agent_max_tool_calls,
-            ),
-        )
-    # Exhausted grounding retries and usage limits are outcomes to score, not
-    # crashes: in production they become a fail-closed 502.
-    except (AgentRunError, GroundingError) as error:
-        return AgentOutcome(
-            status="error",
-            answer="",
-            sources=(),
-            passages=dict(deps.registry.passages),
-            error=f"{type(error).__name__}: {error}",
-        )
-    return AgentOutcome(
-        status=result.answer.status,
-        answer=result.answer.answer,
-        sources=result.sources,
-        passages=dict(deps.registry.passages),
-    )
+    usage = None
+    started = perf_counter()
+    with logfire.span("eval case {case_id}", case_id=case.id) as span:
+        try:
+            result = await run_document_agent(
+                case.question,
+                deps=deps,
+                usage_limits=UsageLimits(
+                    request_limit=settings.agent_max_model_requests,
+                    tool_calls_limit=settings.agent_max_tool_calls,
+                ),
+            )
+        # Exhausted grounding retries and usage limits are outcomes to score, not
+        # crashes: in production they become a fail-closed 502.
+        except (AgentRunError, GroundingError) as error:
+            outcome = AgentOutcome(
+                status="error",
+                answer="",
+                sources=(),
+                passages=dict(deps.registry.passages),
+                error=f"{type(error).__name__}: {error}",
+            )
+        else:
+            usage = usage_summary(result.usage)
+            outcome = AgentOutcome(
+                status=result.answer.status,
+                answer=result.answer.answer,
+                sources=result.sources,
+                passages=dict(deps.registry.passages),
+            )
+        span.set_attribute("status", outcome.status)
+    telemetry = {
+        "latency_s": round(perf_counter() - started, 3),
+        "trace_id": f"{span.get_span_context().trace_id:032x}",
+        "usage": usage,
+    }
+    return outcome, telemetry
 
 
 async def evaluate_agent(
@@ -106,13 +128,18 @@ async def evaluate_agent(
 ) -> tuple[list[AnswerScore], list[dict]]:
     scores, rows = [], []
     for case in cases:
-        outcome = await run_agent_case(case, retriever)
+        outcome, telemetry = await run_agent_case(case, retriever)
         score = score_answer(case, outcome)
         mark = "ok" if score.status_correct else "MISS"
-        print(f"  agent {case.id}: {outcome.status} [{mark}]", flush=True)
+        print(
+            f"  agent {case.id}: {outcome.status} [{mark}] "
+            f"{telemetry['latency_s']:.1f}s{_usage_note(telemetry['usage'])}",
+            flush=True,
+        )
         scores.append(score)
         rows.append(
             asdict(score)
+            | telemetry
             | {
                 "answer": outcome.answer,
                 "sources": [
@@ -130,7 +157,18 @@ async def evaluate_agent(
     return scores, rows
 
 
+def _usage_note(usage: dict[str, Any] | None) -> str:
+    if usage is None:
+        return ""
+    cost = usage["estimated_cost_usd"]
+    return (
+        f" {usage['requests']} req {usage['tool_calls']} tools "
+        f"{usage['total_tokens']} tok" + ("" if cost is None else f" ${cost:.4f}")
+    )
+
+
 async def run(args: argparse.Namespace) -> int:
+    configure_observability("document-copilot-evals")
     suite = load_suite(args.cases)
     cases = [case for case in suite.cases if not args.case or case.id in args.case]
     unknown = set(args.case or ()) - {case.id for case in cases}
@@ -146,18 +184,23 @@ async def run(args: argparse.Namespace) -> int:
             embedding_dimensions=settings.openai_embedding_dimensions,
         )
         retrieval_scores: list[RetrievalScore] = []
+        retrieval_latencies: list[float] = []
         answer_scores: list[AnswerScore] = []
         answer_rows: list[dict] = []
         if args.stage in ("all", "retrieval"):
             print(f"Retrieval (limit={args.limit})", flush=True)
-            retrieval_scores = await evaluate_retrieval(
+            retrieval_scores, retrieval_latencies = await evaluate_retrieval(
                 [case for case in cases if case.answerable], retriever, args.limit
             )
         if args.stage in ("all", "agent"):
             print(f"Agent ({settings.deepseek_chat_model})", flush=True)
             answer_scores, answer_rows = await evaluate_agent(cases, retriever)
 
-    summary = summarize(retrieval_scores, answer_scores)
+    summary = summarize(retrieval_scores, answer_scores) | performance_summary(
+        retrieval_latencies,
+        [row["latency_s"] for row in answer_rows],
+        [row["usage"] for row in answer_rows if row["usage"] is not None],
+    )
     failures = threshold_failures(summary, suite.thresholds)
     report = {
         "created_at": datetime.now(UTC).isoformat(timespec="seconds"),
@@ -194,6 +237,8 @@ async def run(args: argparse.Namespace) -> int:
     print_summary(summary, suite.thresholds, baseline)
     print_misses(retrieval_scores, answer_scores)
     print(f"\nReport written to {output}")
+    if settings.logfire_token is None:
+        print("LOGFIRE_TOKEN is unset, so trace IDs in the report were not exported.")
     if failures:
         print("\nThreshold failures:\n  " + "\n  ".join(failures))
     return 1 if args.enforce and failures else 0

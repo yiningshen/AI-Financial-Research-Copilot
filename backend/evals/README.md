@@ -20,6 +20,10 @@ retrieval settings, chunking, or models, then compare the two reports.
 | | `answers.refusal_accuracy` | Investment-advice questions answered with `refused`. |
 | | `answers.false_answer_rate` | Share of unanswerable questions that got an `answered` response. This is the costliest failure, so its target is 0. |
 | Overall | `answers.status_accuracy`, `answers.answer_rate` | Expected status matched, and share of answerable questions actually answered (low means over-refusal). |
+| Performance | `retrieval.latency_p50_s`, `retrieval.latency_p95_s` | Wall time per `DocumentRetriever.search` call (nearest-rank percentiles). |
+| | `agent.latency_p50_s`, `agent.latency_p95_s` | Wall time per full agent run, including grounding retries. |
+| | `agent.mean_requests`, `agent.mean_tool_calls`, `agent.total_tokens` | Averages and totals over runs that completed. Extra requests usually mean grounding retries. |
+| | `agent.estimated_cost_usd` | Total DeepSeek cost for the run. It's `None` until the `DEEPSEEK_*_USD_PER_MTOK` prices are set. |
 
 Every answer the agent returns has already passed `GroundingValidator`: quotes
 exist verbatim in passages retrieved during the run, and every paragraph is
@@ -49,6 +53,10 @@ uv run python -m evals.run --baseline evals/reports/<earlier>.json --enforce
 
 Each run writes `evals/reports/<timestamp>.json` (gitignored) with the summary,
 config, git commit, per-case scores, answer text, and cited quotes.
+Each agent case also records its latency, token usage, estimated cost, and
+`trace_id`. When `LOGFIRE_TOKEN` is set, every case is exported as its own
+trace, so a slow, expensive, or wrong case can be opened straight from the
+report (see "Observability" in `backend/README.md`).
 `--baseline` prints deltas against an earlier report. `--enforce` exits 1 when
 any threshold in `cases.json` is missed.
 
