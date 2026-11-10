@@ -161,14 +161,14 @@ export function ThreadSidebar({
                       <SidebarMenuButton
                         asChild
                         isActive={activeThreadId === thread.id}
-                        tooltip={thread.title ?? "Untitled research"}
+                        tooltip={thread.title ?? "New chat"}
                       >
                         <Link
                           to={`/chats/${thread.id}`}
                           onClick={() => setOpenMobile(false)}
                         >
                           <MessageSquareTextIcon aria-hidden="true" />
-                          <span>{thread.title ?? "Untitled research"}</span>
+                          <span>{thread.title ?? "New chat"}</span>
                         </Link>
                       </SidebarMenuButton>
                     </SidebarMenuItem>

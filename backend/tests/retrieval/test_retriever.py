@@ -168,20 +168,24 @@ def test_search_starts_lexical_lookup_while_embedding_is_in_flight():
     asyncio.run(run_search())
 
 
-def test_read_chunk_and_surrounding_chunks_use_the_same_typed_passages():
+def test_follow_up_reads_use_the_same_typed_passages():
     database = DatabaseClient()
     retriever = make_retriever(database)
 
     chunk = asyncio.run(retriever.read_chunk(B))
+    chunks = asyncio.run(retriever.read_chunks([B, A, B]))
     surrounding = asyncio.run(retriever.read_surrounding_chunks(B, radius=1))
 
     assert chunk is not None
     assert chunk.chunk_id == B
     assert chunk.is_seed is True
     assert chunk.retrieval_score is None
+    assert [passage.chunk_id for passage in chunks] == [B, A]
     assert [passage.chunk_id for passage in surrounding] == [B, NEIGHBOR]
     assert database.calls[0][1]["p_radius"] == 0
-    assert database.calls[1][1]["p_radius"] == 1
+    assert database.calls[1][1]["p_chunk_ids"] == [str(B), str(A)]
+    assert database.calls[1][1]["p_radius"] == 0
+    assert database.calls[2][1]["p_radius"] == 1
 
 
 def test_search_rejects_empty_query_before_external_calls():

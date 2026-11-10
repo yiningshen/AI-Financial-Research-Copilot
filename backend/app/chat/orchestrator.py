@@ -1,12 +1,13 @@
 """Prepare one grounded assistant turn before anything is streamed."""
 
+from __future__ import annotations
+
 from collections.abc import Awaitable, Callable, Sequence
 from dataclasses import dataclass
 from typing import Any
 from uuid import UUID
 
 from openai import AsyncOpenAI
-from pydantic_ai import Agent
 from pydantic_ai.messages import (
     ModelMessage,
     ModelRequest,
@@ -16,13 +17,15 @@ from pydantic_ai.messages import (
 )
 from pydantic_ai.usage import UsageLimits
 
-from app.assistant.agent import document_agent
+from app.assistant.agent import DocumentAgentRun, run_document_agent
 from app.assistant.deps import DocumentAgentDeps
 from app.assistant.outputs import GroundedAnswer, SourcePassage
 from app.config import settings
 from app.database.chats import ChatRepository
 from app.grounding.validator import GroundingValidator
 from app.retrieval.retriever import DocumentRetriever
+
+DocumentAgentRunner = Callable[..., Awaitable[DocumentAgentRun]]
 
 
 @dataclass(frozen=True, slots=True)
@@ -51,7 +54,7 @@ async def prepare_turn(
     repository: ChatRepository,
     thread_id: UUID,
     question: str,
-    agent: Agent[DocumentAgentDeps, GroundedAnswer] = document_agent,
+    run_agent: DocumentAgentRunner = run_document_agent,
 ) -> PreparedTurn:
     stored_messages = await repository.get_messages(thread_id)
     validator = GroundingValidator()
@@ -68,7 +71,7 @@ async def prepare_turn(
             ),
             grounding_validator=validator,
         )
-        result = await agent.run(
+        result = await run_agent(
             question,
             deps=deps,
             message_history=message_history(stored_messages),
@@ -78,11 +81,10 @@ async def prepare_turn(
             ),
         )
 
-    sources = validator.validate(result.output, deps.retrieved_passages)
     usage = result.usage
     return PreparedTurn(
-        answer=result.output,
-        sources=sources,
+        answer=result.answer,
+        sources=result.sources,
         usage={
             "model": settings.deepseek_chat_model,
             "requests": usage.requests,

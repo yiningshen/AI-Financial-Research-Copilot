@@ -23,6 +23,7 @@ import { checkedFetch, getApiAccessToken } from "@/lib/http"
 type ChatPanelProps = {
   threadId: string
   initialMessages: DocumentUIMessage[]
+  onQuestionSubmitted: (question: string) => void
   onTurnFinished: () => void
   onAuthExpired: () => void
   onLeaveThread: () => void
@@ -31,6 +32,7 @@ type ChatPanelProps = {
 export function ChatPanel({
   threadId,
   initialMessages,
+  onQuestionSubmitted,
   onTurnFinished,
   onAuthExpired,
   onLeaveThread,
@@ -78,6 +80,9 @@ export function ChatPanel({
 
     clearError()
     setInput("")
+    if (!messages.some((message) => message.role === "user")) {
+      onQuestionSubmitted(text)
+    }
     void sendMessage({ text })
   }
 

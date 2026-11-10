@@ -36,6 +36,10 @@ function errorMessage(error: unknown, fallback: string) {
   return error instanceof ApiError ? error.message : fallback
 }
 
+function questionTitle(question: string) {
+  return question.replace(/\s+/g, " ").trim().slice(0, 200)
+}
+
 export function ChatPage({ email, signOutError, onSignOut }: ChatPageProps) {
   const { threadId } = useParams<{ threadId: string }>()
   const navigate = useNavigate()
@@ -125,7 +129,7 @@ export function ChatPage({ email, signOutError, onSignOut }: ChatPageProps) {
     setSidebarError(null)
 
     try {
-      const thread = await api.createThread({ title: "New chat" })
+      const thread = await api.createThread()
       setThreads((current) => [thread, ...current])
       navigate(`/chats/${thread.id}`)
     } catch (error) {
@@ -133,6 +137,23 @@ export function ChatPage({ email, signOutError, onSignOut }: ChatPageProps) {
     } finally {
       setIsCreating(false)
     }
+  }
+
+  function titleThreadFromQuestion(question: string) {
+    if (threadId === undefined) {
+      return
+    }
+    const title = questionTitle(question)
+    setThreads((current) => {
+      const thread = current.find((item) => item.id === threadId)
+      if (thread === undefined || (thread.title && thread.title !== "New chat")) {
+        return current
+      }
+      return [
+        { ...thread, title, updated_at: new Date().toISOString() },
+        ...current.filter((item) => item.id !== threadId),
+      ]
+    })
   }
 
   const activeThread = threads.find((thread) => thread.id === threadId)
@@ -164,7 +185,7 @@ export function ChatPage({ email, signOutError, onSignOut }: ChatPageProps) {
             <div className="min-w-0">
               <h1 className="truncate text-sm font-semibold tracking-tight sm:text-base">
                 {activeThread?.title ??
-                  (threadId ? "Research conversation" : "Document Copilot")}
+                  (threadId ? "New chat" : "Document Copilot")}
               </h1>
               <p className="hidden text-xs text-muted-foreground sm:block">
                 Evidence-grounded filing research
@@ -222,6 +243,7 @@ export function ChatPage({ email, signOutError, onSignOut }: ChatPageProps) {
             key={threadId}
             threadId={threadId}
             initialMessages={activeHistory.messages}
+            onQuestionSubmitted={titleThreadFromQuestion}
             onTurnFinished={() => void loadThreads()}
             onAuthExpired={() => void onSignOut()}
             onLeaveThread={() => navigate("/chats")}

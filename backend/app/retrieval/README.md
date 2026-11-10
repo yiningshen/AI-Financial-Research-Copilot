@@ -43,7 +43,8 @@ The request lifecycle is:
    forced tool choice used by structured output tools.
 6. The grounding validator checks the structured answer against the evidence
    ledger. Invalid output is retried twice, then rejected.
-7. Only validated text and `data-citation` parts are streamed to the browser.
+7. Only validated text, `data-chart`, and `data-citation` parts are streamed to
+   the browser.
 8. After streaming the answer, one database function atomically stores the user
    message, assistant message, AI SDK parts, model usage, citations, and updated
    thread timestamp.
@@ -178,9 +179,10 @@ Validated responses use the AI SDK UI message stream protocol:
 2. `text-start`
 3. `text-delta`
 4. `text-end`
-5. One `data-citation` part per source
-6. `finish`
-7. `[DONE]`
+5. An optional citation-linked `data-chart` part
+6. One `data-citation` part per source
+7. `finish`
+8. `[DONE]`
 
 The exact text and citation parts are stored so thread history can reproduce the
 response. Migration `a13d8e5b72c4` extends `persist_chat_turn` to insert messages,
@@ -209,6 +211,13 @@ and grounding validation:
 uv run pytest -s -m integration tests/assistant/test_smoke.py -v
 ```
 
+Measure retrieval quality, citation correctness, grounding, and refusal
+behavior against the fixed evaluation set (see `evals/README.md`):
+
+```bash
+uv run python -m evals.run
+```
+
 Both integration tests load `backend/.env`, make live network requests, and may
 incur small provider charges. From Jupyter, select `backend/.venv` as the kernel,
 change to the backend directory, and execute the same commands with `!`.
@@ -220,7 +229,8 @@ change to the backend directory, and execute the same commands with `!`.
 - `retrieval/queries.py`: bounded Supabase RPC calls
 - `retrieval/fusion.py`: rank-only Reciprocal Rank Fusion
 - `retrieval/models.py`: filters, ranked candidates, windows, and passages
-- `assistant/agent.py`: DeepSeek agent, tools, and output retry hook
+- `assistant/agent.py`: DeepSeek agent, run entry point, and output retry hook
+- `assistant/tools.py`: bounded search and follow-up retrieval tools
 - `assistant/README.md`: assistant lifecycle, tools, output contract, and tests
 - `assistant/deps.py`: request identity and evidence ledger
 - `assistant/outputs.py`: typed answer, citation, and trusted source models
